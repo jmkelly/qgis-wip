@@ -180,15 +180,18 @@ enum Token {
 }
 
 /// Tokenizer for WKT2:2019 strings.
-struct Lexer<'a> {
-    input: &'a [char],
+///
+/// Owns the input as a `Vec<char>` so the parser can hold it without
+/// lifetime issues.
+struct Lexer {
+    input: Vec<char>,
     pos: usize,
 }
 
-impl<'a> Lexer<'a> {
-    fn new(input: &'a str) -> Self {
+impl Lexer {
+    fn new(input: &str) -> Self {
         Self {
-            input: &input.chars().collect::<Vec<_>>(),
+            input: input.chars().collect(),
             pos: 0,
         }
     }
@@ -309,13 +312,13 @@ impl<'a> Lexer<'a> {
 }
 
 /// Parser for WKT2:2019 CRS strings.
-pub struct Wkt2Parser<'a> {
-    lexer: Lexer<'a>,
+pub struct Wkt2Parser {
+    lexer: Lexer,
     current: Option<Token>,
 }
 
-impl<'a> Wkt2Parser<'a> {
-    pub fn new(input: &'a str) -> Self {
+impl Wkt2Parser {
+    pub fn new(input: &str) -> Self {
         let mut lexer = Lexer::new(input);
         // Pre-read first token
         let current = lexer.next_token().ok().flatten();
@@ -399,7 +402,8 @@ impl<'a> Wkt2Parser<'a> {
             Some(Token::Word(w)) => {
                 let wt = w.to_uppercase();
                 match wt.as_str() {
-                    "GEOGCRS" | "PROJCRS" | "GEODCRS" | "VERTCRS" | "COMPD_CS" => {
+                    "GEOGCRS" | "PROJCRS" | "GEODCRS" | "VERTCRS" | "COMPD_CS"
+                    | "BASEGEOGCRS" => {
                         self.current = self.lexer.next_token()?;
                         wt
                     }
@@ -415,7 +419,8 @@ impl<'a> Wkt2Parser<'a> {
                 // Handle case where CRS type might be quoted
                 let wt = s.to_uppercase();
                 match wt.as_str() {
-                    "GEOGCRS" | "PROJCRS" | "GEODCRS" | "VERTCRS" | "COMPD_CS" => {
+                    "GEOGCRS" | "PROJCRS" | "GEODCRS" | "VERTCRS" | "COMPD_CS"
+                    | "BASEGEOGCRS" => {
                         self.current = self.lexer.next_token()?;
                         wt
                     }
@@ -503,10 +508,10 @@ impl<'a> Wkt2Parser<'a> {
                     parsed.id = Some(self.parse_id()?);
                 }
             }
-            "GEOGCRS" | "GEODCRS" => {
+            "GEOGCRS" | "GEODCRS" | "BASEGEOGCRS" => {
                 self.expect_comma()?;
-                // Parse datum
-                parsed.datum = Some(self.parse_datum()?);
+                // Parse datum, ensemble, or vertical datum
+                parsed.datum = Some(self.parse_datum_or_ensemble()?);
 
                 self.expect_comma()?;
                 // Parse prime meridian (optional in some cases)
@@ -516,16 +521,16 @@ impl<'a> Wkt2Parser<'a> {
                 // Parse CS
                 parsed.cs = Some(self.parse_cs()?);
 
-                // Optional ID
-                if self.current == Some(Token::Comma) {
+                // Optional ID (not present on BASEGEOGCRS)
+                if parsed.crs_type != "BASEGEOGCRS" && self.current == Some(Token::Comma) {
                     self.expect_comma()?;
                     parsed.id = Some(self.parse_id()?);
                 }
             }
             "VERTCRS" => {
                 self.expect_comma()?;
-                // Parse datum ensemble
-                parsed.datum = Some(self.parse_datum()?);
+                // Parse vertical datum (VDATUM) or ensemble
+                parsed.datum = Some(self.parse_vdatum()?);
 
                 self.expect_comma()?;
                 // Parse CS
@@ -612,18 +617,15 @@ impl<'a> Wkt2Parser<'a> {
         let mut ensemble = None;
         let ellipsoid = match self.current.take() {
             Some(Token::Word(ref w)) if w.eq_ignore_ascii_case("ELLIPSOID") => {
-                let eid = self.current.take();
                 self.current = self.lexer.next_token()?;
                 Some(self.parse_ellipsoid()?)
             }
             Some(Token::Word(ref w)) if w.eq_ignore_ascii_case("ENSEMBLE") => {
-                let eid = self.current.take();
                 self.current = self.lexer.next_token()?;
                 ensemble = Some(self.parse_ensemble()?);
                 None
             }
             _ => {
-                self.current = eid;
                 return Err(Wkt2Error::MissingNode {
                     node: "ELLIPSOID or ENSEMBLE".to_string(),
                 })
@@ -642,6 +644,67 @@ impl<'a> Wkt2Parser<'a> {
             name,
             ellipsoid,
             ensemble,
+        })
+    }
+
+    /// Parses either a DATUM node or a direct ENSEMBLE node.
+    ///
+    /// In WKT2, a GEODCRS can have either `DATUM[...]` or `ENSEMBLE[...]`
+    /// directly (without a DATUM wrapper). This handles both forms.
+    fn parse_datum_or_ensemble(&mut self) -> Result<Datum, Wkt2Error> {
+        match self.current.take() {
+            Some(Token::Word(ref w)) if w.eq_ignore_ascii_case("DATUM") => {
+                self.current = self.lexer.next_token()?;
+                self.parse_datum()
+            }
+            Some(Token::Word(ref w)) if w.eq_ignore_ascii_case("ENSEMBLE") => {
+                self.current = self.lexer.next_token()?;
+                let e = self.parse_ensemble()?;
+                let name = e.name.clone();
+                Ok(Datum {
+                    name,
+                    ellipsoid: None,
+                    ensemble: Some(e),
+                })
+            }
+            _ => Err(Wkt2Error::MissingNode {
+                node: "DATUM or ENSEMBLE".to_string(),
+            }),
+        }
+    }
+
+    /// Parses a VDATUM node (vertical datum).
+    ///
+    /// VDATUM is simpler than DATUM: it has just a name and optional ID,
+    /// with no ellipsoid or ensemble.
+    fn parse_vdatum(&mut self) -> Result<Datum, Wkt2Error> {
+        self.expect_word("VDATUM")?;
+        self.expect_bracket(true)?;
+
+        let name = match self.current.take() {
+            Some(Token::StringLiteral(s)) => {
+                self.current = self.lexer.next_token()?;
+                s
+            }
+            Some(Token::Word(w)) => {
+                self.current = self.lexer.next_token()?;
+                w
+            }
+            _ => return Err(Wkt2Error::UnexpectedEof),
+        };
+
+        // Optional ID
+        if self.current == Some(Token::Comma) {
+            self.expect_comma()?;
+            let _ = self.parse_id()?;
+        }
+
+        self.expect_bracket(false)?;
+
+        Ok(Datum {
+            name,
+            ellipsoid: None,
+            ensemble: None,
         })
     }
 

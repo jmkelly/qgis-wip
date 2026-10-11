@@ -23,7 +23,7 @@ pub enum TransformError {
     /// The proj string could not be parsed.
     InvalidProjString(String),
     /// The transformation failed for the given input.
-    TransformFailed { reason: },
+    TransformFailed { reason: String },
     /// The EPSG code is not recognized.
     UnknownEpsgCode(i32),
 }
@@ -68,7 +68,7 @@ impl CrsTransform {
     ///
     /// Returns [`TransformError::UnknownEpsgCode`] if the code is not in the dataset.
     pub fn from_epsg(epsg: i32) -> Result<Self, TransformError> {
-        let proj_string = crs-definitions::from_code(epsg)
+        let proj_string = crs_definitions::from_code(epsg as u16)
             .ok_or(TransformError::UnknownEpsgCode(epsg))?
             .proj4
             .to_string();
@@ -93,19 +93,18 @@ impl CrsTransform {
         target: &CrsTransform,
     ) -> Result<(f64, f64), TransformError> {
         // Convert degrees to radians for proj4rs
-        let x_rad = x.to_radians();
-        let y_rad = y.to_radians();
+        let mut xy = (x.to_radians(), y.to_radians());
 
-        let (x_out_rad, y_out_rad) = proj4rs::transform::transform(
+        proj4rs::transform::transform(
             &self.inner,
             &target.inner,
-            (x_rad, y_rad),
+            &mut xy,
         ).map_err(|e| TransformError::TransformFailed {
             reason: e.to_string(),
         })?;
 
         // Convert radians back to degrees
-        Ok((x_out_rad.to_degrees(), y_out_rad.to_degrees()))
+        Ok((xy.0.to_degrees(), xy.1.to_degrees()))
     }
 
     /// Transforms a point in-place from this CRS to another CRS.
