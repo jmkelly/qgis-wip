@@ -1,0 +1,9 @@
+[package]
+name = "qgis-pointcloud"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Point cloud types for QGIS Rust port (replacing PDAL point cloud)"
+
+[dependencies]
+qgis-geometry = { path = "../geometry" }

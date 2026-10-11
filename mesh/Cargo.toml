@@ -1,0 +1,9 @@
+[package]
+name = "qgis-mesh"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Mesh types for QGIS Rust port (replacing MDAL mesh)"
+
+[dependencies]
+qgis-geometry = { path = "../geometry" }
