@@ -144,9 +144,12 @@ async fn ogc_handler(
                     .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
             };
 
+            // Detect content type from response body
+            let content_type = detect_content_type(&response.body);
+
             Response::builder()
                 .status(status)
-                .header("Content-Type", "application/xml")
+                .header("Content-Type", content_type)
                 .body(Body::from(response.body))
                 .unwrap()
         }
@@ -162,6 +165,16 @@ async fn ogc_handler(
             )))
             .unwrap(),
     }
+}
+
+/// Detects the content type from the response body.
+fn detect_content_type(body: &Bytes) -> &'static str {
+    // Check for PNG magic bytes
+    if body.len() >= 8 && &body[0..8] == b"\x89PNG\r\n\x1a\n" {
+        return "image/png";
+    }
+    // Default to XML
+    "application/xml"
 }
 
 /// Runs the axum HTTP server.

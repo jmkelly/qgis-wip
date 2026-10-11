@@ -23,6 +23,7 @@ pub mod fcgi_listener;
 pub mod http_server;
 pub mod query;
 pub mod service;
+pub mod wms;
 
 pub use config::ServerConfig;
 pub use error::{Result, ServerError};
