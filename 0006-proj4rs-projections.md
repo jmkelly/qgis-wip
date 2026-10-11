@@ -138,9 +138,44 @@ These are the E2 acceptance boundary. Re-check every one at E9 hardening (`qgis-
 | No WKT2:2019 parse/emit — `proj4wkt-rs` not on crates.io | CRS serialization/deserialization for oracle | ~2.5K SLoC | gap build (qgis-qxu.1) |
 | No general grid shifts — `hgridshift`/`vgridshift` unsupported (experimental NTV2/GeoTIFF only) | NADCON (.gsb), GTX, and other grid formats | ~1.5K SLoC | gap build (qgis-qxu.3) |
 | Missing projections: `ortho`, `qsc`, `noop` — 13 occurrences | Orthographic, Quadrilateralized Spherical Cube | ~500 SLoC | gap build (qgis-qxu.2) |
-| Not PROJ — no coordinate-operation pipelines | `projinfo`/cct parity and PROJ's automatic transform selection | decision bead | qgis-qxu.4 |
+| Not PROJ — no coordinate-operation pipelines | `projinfo`/cct parity and PROJ's automatic transform selection | **resolved (b)**: degraded automatic selection via first-match heuristic; parity claim scoped to proj4rs-supported transforms only | qgis-qxu.4 |
 | Radians are the native angular unit | Convert at the crate boundary; degrees everywhere in `qgis-crs`'s public API | us | qgis-qxu.2 |
 | Upstream aims at proj4js parity, "not a replacement of PROJ" | We cannot assume upstream closes our gaps; track releases | us | track |
+
+## projinfo/cct parity decision (bead qgis-qxu.4, 2026-10-11)
+
+**Decision**: Option (b) — accept degraded automatic selection via first-match heuristic.
+Scope the parity claim to proj4rs-supported transforms only.
+
+**Rationale**: Building a minimal operation-pipeline evaluator (option a) would require
+reimplementing PROJ's coordinate-operation selection logic — the exact machinery ADR 0006
+was written to avoid. The facade approach means we accept that PROJ's automatic transform
+selection (which considers accuracy, area of use, and grid availability) cannot be
+reproduced by delegation to proj4rs.
+
+**Heuristic**: When QGIS requests a transform between two CRS pairs:
+1. Look up both CRS definitions via crs-definitions.
+2. If both have proj4 strings, use proj4rs directly (first-match).
+3. If a pipeline is required (datum shift, unit conversion, axis swap), attempt
+   step-by-step composition using proj4rs-supported operations.
+4. If composition fails, return a clear error naming the unsupported operation.
+
+**Parity claim scope**: We claim parity only for CRS pairs where proj4rs supports
+all required operations. For pairs requiring pipeline operations proj4rs does not
+support (helmert, cart, push/pop, axisswap), we return an explicit error rather
+than a silently wrong result. This caps E9 parity at proj4rs's coverage boundary.
+
+**Tests**: At least 10 real-world CRS pairs covering:
+- EPSG:4326 → EPSG:3857 (WGS 84 to Web Mercator, no pipeline needed)
+- EPSG:4326 → EPSG:2154 (WGS 84 to Lambert-93, datum shift)
+- EPSG:4326 → EPSG:27700 (WGS 84 to British National Grid, datum shift)
+- EPSG:4326 → EPSG:3111 (WGS 84 to GDA94 / MGA zone 55, UTM)
+- EPSG:4326 → EPSG:32733 (WGS 84 to WGS 84 / UTM zone 33S, UTM)
+- EPSG:4326 → EPSG:4978 (WGS 84 to WGS 84 geocentric, geocent stub)
+- EPSG:4326 → EPSG:4979 (WGS 84 to WGS 84 3D, geocent stub)
+- EPSG:4326+5703 → EPSG:4326 (compound CRS, vertical)
+- EPSG:4326 → EPSG:3035 (WGS 84 to ETRS89-extended / LAEA Europe)
+- EPSG:4326 → EPSG:3857 via EPSG:4269 (NAD83 intermediate, datum shift)
 
 ## Considered Options
 
