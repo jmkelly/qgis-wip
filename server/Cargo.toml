@@ -11,6 +11,8 @@ tokio = { workspace = true }
 bytes = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+qgis-render = { path = "../render" }
+qgis-geometry = { path = "../geometry" }
 
 [dev-dependencies]
 tower = "=0.5.3"

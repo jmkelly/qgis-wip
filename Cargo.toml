@@ -8,6 +8,7 @@ members = [
     "oracle",
     "providers",
     "analysis",
+    "render",
     "server",
     "pyo3",
     "gui",
@@ -39,3 +40,4 @@ tokio = { version = "=1.49.0", features = ["rt-multi-thread", "macros", "net", "
 bytes = "=1.11.0"
 thiserror = "=2.0.12"
 tracing = "=0.1.44"
+png = "=0.17.16"
