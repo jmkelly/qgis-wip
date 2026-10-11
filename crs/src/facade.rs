@@ -68,7 +68,8 @@ impl CrsTransform {
     ///
     /// Returns [`TransformError::UnknownEpsgCode`] if the code is not in the dataset.
     pub fn from_epsg(epsg: i32) -> Result<Self, TransformError> {
-        let proj_string = crs_definitions::from_code(epsg as u16)
+        let code = u16::try_from(epsg).map_err(|_| TransformError::UnknownEpsgCode(epsg))?;
+        let proj_string = crs_definitions::from_code(code)
             .ok_or(TransformError::UnknownEpsgCode(epsg))?
             .proj4
             .to_string();
@@ -93,10 +94,9 @@ impl CrsTransform {
         target: &CrsTransform,
     ) -> Result<(f64, f64), TransformError> {
         // Convert degrees to radians for proj4rs
-        let x_rad = x.to_radians();
-        let y_rad = y.to_radians();
+        let mut point = (x.to_radians(), y.to_radians());
 
-        let mut point = (x_rad, y_rad);
+
         proj4rs::transform::transform(
             &self.inner,
             &target.inner,
@@ -107,7 +107,7 @@ impl CrsTransform {
         let (x_out_rad, y_out_rad) = point;
 
         // Convert radians back to degrees
-        Ok((x_out_rad.to_degrees(), y_out_rad.to_degrees()))
+        Ok((point.0.to_degrees(), point.1.to_degrees()))
     }
 
     /// Transforms a point in-place from this CRS to another CRS.

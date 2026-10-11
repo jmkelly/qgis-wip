@@ -185,10 +185,11 @@ struct Lexer {
     pos: usize,
 }
 
-impl Lexer {
-    fn new(input: &str) -> Self {
+impl<'a> Lexer<'a> {
+    fn new(input: &'a str) -> Self {
+        let chars: &'a [char] = Box::leak(input.chars().collect::<Vec<_>>().into_boxed_slice());
         Self {
-            input: input.chars().collect(),
+            input: chars,
             pos: 0,
         }
     }
@@ -317,14 +318,12 @@ pub struct Wkt2Parser {
 impl Wkt2Parser {
     pub fn new(input: &str) -> Self {
         let mut lexer = Lexer::new(input);
-        // Pre-read first token
         let current = lexer.next_token().ok().flatten();
         Self { lexer, current }
     }
 
     pub fn parse(&mut self) -> Result<ParsedCrs, Wkt2Error> {
         let crs = self.parse_crs()?;
-        // Ensure we consumed all input
         self.lexer.skip_whitespace();
         if self.lexer.peek().is_some() {
             return Err(Wkt2Error::UnexpectedChar {
@@ -347,11 +346,11 @@ impl Wkt2Parser {
                 self.current = self.lexer.next_token()?;
                 Ok(())
             }
-            Some(Token::Word(w)) => Err(Wkt2Error::ExpectedToken {
+            Some(Token::Word(_)) => Err(Wkt2Error::ExpectedToken {
                 token: expected.to_string(),
                 pos: self.lexer.pos,
             }),
-            Some(other) => Err(Wkt2Error::ExpectedToken {
+            Some(_) => Err(Wkt2Error::ExpectedToken {
                 token: expected.to_string(),
                 pos: self.lexer.pos,
             }),
@@ -394,12 +393,11 @@ impl Wkt2Parser {
     }
 
     fn parse_crs(&mut self) -> Result<ParsedCrs, Wkt2Error> {
-        // Read the CRS type keyword
         let crs_type = match self.current.take() {
             Some(Token::Word(w)) => {
                 let wt = w.to_uppercase();
                 match wt.as_str() {
-                    "GEOGCRS" | "PROJCRS" | "GEODCRS" | "VERTCRS" | "COMPD_CS" => {
+                    "GEOGCRS" | "PROJCRS" | "GEODCRS" | "VERTCRS" | "COMPD_CS" | "BASEGEOGCRS" => {
                         self.current = self.lexer.next_token()?;
                         wt
                     }
@@ -412,10 +410,9 @@ impl Wkt2Parser {
                 }
             }
             Some(Token::StringLiteral(s)) => {
-                // Handle case where CRS type might be quoted
                 let wt = s.to_uppercase();
                 match wt.as_str() {
-                    "GEOGCRS" | "PROJCRS" | "GEODCRS" | "VERTCRS" | "COMPD_CS" => {
+                    "GEOGCRS" | "PROJCRS" | "GEODCRS" | "VERTCRS" | "COMPD_CS" | "BASEGEOGCRS" => {
                         self.current = self.lexer.next_token()?;
                         wt
                     }
@@ -438,7 +435,6 @@ impl Wkt2Parser {
 
         self.expect_bracket(true)?;
 
-        // Parse name
         let name = match self.current.take() {
             Some(Token::StringLiteral(s)) => {
                 self.current = self.lexer.next_token()?;
@@ -451,7 +447,6 @@ impl Wkt2Parser {
             _ => return Err(Wkt2Error::UnexpectedEof),
         };
 
-        // Parse the rest of the CRS based on type
         let mut parsed = ParsedCrs {
             crs_type,
             name,
@@ -469,13 +464,11 @@ impl Wkt2Parser {
         match parsed.crs_type.as_str() {
             "COMPD_CS" => {
                 self.expect_comma()?;
-                // Parse first component
                 let child1 = self.parse_crs()?;
                 self.expect_comma()?;
                 let child2 = self.parse_crs()?;
                 parsed.components.push(child1);
                 parsed.components.push(child2);
-                // Optional ID
                 if self.current == Some(Token::Comma) {
                     self.expect_comma()?;
                     parsed.id = Some(self.parse_id()?);
@@ -483,59 +476,31 @@ impl Wkt2Parser {
             }
             "PROJCRS" => {
                 self.expect_comma()?;
-                // Parse base geographic CRS
                 let base = self.parse_crs()?;
                 parsed.datum = base.datum.clone();
                 parsed.ellipsoid = base.ellipsoid.clone();
                 parsed.prime_meridian = base.prime_meridian.clone();
-
                 self.expect_comma()?;
-                // Parse conversion
                 parsed.conversion = Some(self.parse_conversion()?);
-
                 self.expect_comma()?;
-                // Parse CS
                 parsed.cs = Some(self.parse_cs()?);
-
-                // Optional ID
-                if self.current == Some(Token::Comma) {
-                    self.expect_comma()?;
-                    parsed.id = Some(self.parse_id()?);
-                }
+                parsed.id = self.parse_optional_id()?;
             }
-            "GEOGCRS" | "GEODCRS" => {
+            "GEOGCRS" | "GEODCRS" | "BASEGEOGCRS" => {
                 self.expect_comma()?;
-                // Parse datum
                 parsed.datum = Some(self.parse_datum()?);
-
                 self.expect_comma()?;
-                // Parse prime meridian (optional in some cases)
                 parsed.prime_meridian = Some(self.parse_prime_meridian()?);
-
                 self.expect_comma()?;
-                // Parse CS
                 parsed.cs = Some(self.parse_cs()?);
-
-                // Optional ID
-                if self.current == Some(Token::Comma) {
-                    self.expect_comma()?;
-                    parsed.id = Some(self.parse_id()?);
-                }
+                parsed.id = self.parse_optional_id()?;
             }
             "VERTCRS" => {
                 self.expect_comma()?;
-                // Parse datum ensemble
                 parsed.datum = Some(self.parse_datum()?);
-
                 self.expect_comma()?;
-                // Parse CS
                 parsed.cs = Some(self.parse_cs()?);
-
-                // Optional ID
-                if self.current == Some(Token::Comma) {
-                    self.expect_comma()?;
-                    parsed.id = Some(self.parse_id()?);
-                }
+                parsed.id = self.parse_optional_id()?;
             }
             _ => {
                 return Err(Wkt2Error::UnsupportedCrsType {
@@ -578,10 +543,8 @@ impl Wkt2Parser {
             _ => return Err(Wkt2Error::UnexpectedEof),
         };
 
-        // Optional ANGLEUNIT or other trailing elements
         if self.current == Some(Token::Comma) {
             self.expect_comma()?;
-            // Skip optional elements until ]
             self.skip_until_bracket()?;
         }
 
@@ -591,7 +554,20 @@ impl Wkt2Parser {
     }
 
     fn parse_datum(&mut self) -> Result<Datum, Wkt2Error> {
-        self.expect_word("DATUM")?;
+        let is_vdatum = match self.current.take() {
+            Some(Token::Word(w)) if w.eq_ignore_ascii_case("DATUM") => {
+                self.current = self.lexer.next_token()?;
+                false
+            }
+            Some(Token::Word(w)) if w.eq_ignore_ascii_case("VDATUM") => {
+                self.current = self.lexer.next_token()?;
+                true
+            }
+            _ => return Err(Wkt2Error::ExpectedToken {
+                token: "DATUM".to_string(),
+                pos: self.lexer.pos,
+            }),
+        };
         self.expect_bracket(true)?;
 
         let name = match self.current.take() {
@@ -606,9 +582,21 @@ impl Wkt2Parser {
             _ => return Err(Wkt2Error::UnexpectedEof),
         };
 
+        if is_vdatum {
+            if self.current == Some(Token::Comma) {
+                self.expect_comma()?;
+                let _ = self.parse_id()?;
+            }
+            self.expect_bracket(false)?;
+            return Ok(Datum {
+                name,
+                ellipsoid: None,
+                ensemble: None,
+            });
+        }
+
         self.expect_comma()?;
 
-        // Parse ellipsoid or ensemble
         let mut ensemble = None;
         let ellipsoid = match self.current {
             Some(Token::Word(ref w)) if w.eq_ignore_ascii_case("ELLIPSOID") => {
@@ -627,7 +615,6 @@ impl Wkt2Parser {
             }
         };
 
-        // Optional ID
         if self.current == Some(Token::Comma) {
             self.expect_comma()?;
             let _ = self.parse_id()?;
@@ -643,7 +630,7 @@ impl Wkt2Parser {
     }
 
     fn parse_ensemble(&mut self) -> Result<DatumEnsemble, Wkt2Error> {
-        self.expect_word("ENSEMBLE")?;
+        // The caller (parse_datum) has already consumed the ENSEMBLE token.
         self.expect_bracket(true)?;
 
         let name = match self.current.take() {
@@ -668,6 +655,14 @@ impl Wkt2Parser {
             }
         }
 
+        // After MEMBER nodes, there may be an ELLIPSOID node before the accuracy.
+        if let Some(Token::Word(ref w)) = self.current {
+            if w.eq_ignore_ascii_case("ELLIPSOID") {
+                self.current = self.lexer.next_token()?;
+                self.skip_balanced_node()?;
+            }
+        }
+
         self.expect_comma()?;
         let accuracy = match self.current.take() {
             Some(Token::Number(n)) => {
@@ -677,7 +672,17 @@ impl Wkt2Parser {
             _ => return Err(Wkt2Error::UnexpectedEof),
         };
 
-        // Optional ID
+        // Skip ENSEMBLEACCURACY node that may follow
+        if self.current == Some(Token::Comma) {
+            self.expect_comma()?;
+            if let Some(Token::Word(ref w)) = self.current {
+                if w.eq_ignore_ascii_case("ENSEMBLEACCURACY") {
+                    self.current = self.lexer.next_token()?;
+                    self.skip_balanced_node()?;
+                }
+            }
+        }
+
         if self.current == Some(Token::Comma) {
             self.expect_comma()?;
             let _ = self.parse_id()?;
@@ -719,7 +724,7 @@ impl Wkt2Parser {
     }
 
     fn parse_ellipsoid(&mut self) -> Result<Ellipsoid, Wkt2Error> {
-        self.expect_word("ELLIPSOID")?;
+        // The caller (parse_datum) has already consumed the ELLIPSOID token.
         self.expect_bracket(true)?;
 
         let name = match self.current.take() {
@@ -829,18 +834,14 @@ impl Wkt2Parser {
 
         self.expect_comma()?;
 
-        // Parse axes
-        let mut axes = Vec::new();
-        loop {
-            let axis = self.parse_axis()?;
-            axes.push(axis);
-            if self.current != Some(Token::Comma) {
-                break;
+        let _num_axes = match self.current.take() {
+            Some(Token::Number(n)) => {
+                self.current = self.lexer.next_token()?;
+                n
             }
-            self.expect_comma()?;
-        }
+            _ => return Err(Wkt2Error::UnexpectedEof),
+        };
 
-        // Optional ID
         let mut id = None;
         if self.current == Some(Token::Comma) {
             self.expect_comma()?;
@@ -848,6 +849,21 @@ impl Wkt2Parser {
         }
 
         self.expect_bracket(false)?;
+
+        // Parse AXIS nodes (siblings of CS, not children)
+        let mut axes = Vec::new();
+        while let Some(Token::Word(ref w)) = self.current {
+            if w.eq_ignore_ascii_case("AXIS") {
+                let axis = self.parse_axis()?;
+                axes.push(axis);
+                if self.current != Some(Token::Comma) {
+                    break;
+                }
+                self.expect_comma()?;
+            } else {
+                break;
+            }
+        }
 
         Ok(CoordinateSystem { type_, axes })
     }
@@ -882,7 +898,6 @@ impl Wkt2Parser {
             _ => return Err(Wkt2Error::UnexpectedEof),
         };
 
-        // Optional abbreviation and unit
         let mut abbreviation = String::new();
         let mut unit = String::new();
 
@@ -903,11 +918,9 @@ impl Wkt2Parser {
 
         if self.current == Some(Token::Comma) {
             self.expect_comma()?;
-            // Parse unit
             unit = self.parse_unit_def()?;
         }
 
-        // Optional ID
         if self.current == Some(Token::Comma) {
             self.expect_comma()?;
             let _ = self.parse_id()?;
@@ -941,10 +954,8 @@ impl Wkt2Parser {
 
         self.expect_comma()?;
 
-        // Parse method
         let method = self.parse_method()?;
 
-        // Parse parameters
         let mut parameters = Vec::new();
         while self.current == Some(Token::Comma) {
             self.expect_comma()?;
@@ -952,7 +963,6 @@ impl Wkt2Parser {
             parameters.push(param);
         }
 
-        // Optional ID
         if self.current == Some(Token::Comma) {
             self.expect_comma()?;
             let _ = self.parse_id()?;
@@ -1032,7 +1042,6 @@ impl Wkt2Parser {
     }
 
     fn parse_unit_def(&mut self) -> Result<String, Wkt2Error> {
-        // Read the unit type keyword
         let unit_type = match self.current.take() {
             Some(Token::Word(w)) => {
                 let wt = w.to_uppercase();
@@ -1047,7 +1056,6 @@ impl Wkt2Parser {
             _ => return Err(Wkt2Error::UnexpectedEof),
         };
 
-        // Read the name
         let _name = match self.current.take() {
             Some(Token::StringLiteral(s)) => {
                 self.current = self.lexer.next_token()?;
@@ -1060,7 +1068,6 @@ impl Wkt2Parser {
             _ => return Err(Wkt2Error::UnexpectedEof),
         };
 
-        // Read conversion factor
         if self.current == Some(Token::Comma) {
             self.expect_comma()?;
             let _factor = match self.current.take() {
@@ -1071,18 +1078,73 @@ impl Wkt2Parser {
             };
         }
 
-        // Skip optional ID
         if self.current == Some(Token::Comma) {
             self.expect_comma()?;
             self.skip_until_bracket()?;
         }
 
-        // Consume closing bracket if present
         if self.current == Some(Token::CloseBracket) {
             self.current = self.lexer.next_token()?;
         }
 
         Ok(unit_type)
+    }
+
+    /// After parsing the CS, skip optional nodes (ANGLEUNIT, LENGTHUNIT,
+    /// SCALEUNIT, etc.) and then parse the trailing ID if present.
+    /// Returns the parsed ID, or `None` if no ID follows.
+    fn parse_optional_id(&mut self) -> Result<Option<AuthorityId>, Wkt2Error> {
+        while self.current == Some(Token::Comma) {
+            // Consume the comma and check if the next token starts an ID node.
+            self.expect_comma()?;
+            match self.current.take() {
+                Some(Token::Word(w)) if w.eq_ignore_ascii_case("ID") => {
+                    // Put the token back and parse the ID.
+                    self.current = Some(Token::Word(w));
+                    let id = self.parse_id()?;
+                    return Ok(Some(id));
+                }
+                Some(other) => {
+                    // Not an ID — push the token back and skip the optional node
+                    // using bracket counting (handles nested ID[...] inside).
+                    self.current = Some(other);
+                    self.skip_balanced_node()?;
+                }
+                None => return Err(Wkt2Error::UnexpectedEof),
+            }
+        }
+        Ok(None)
+    }
+
+    /// Skips a balanced bracket node (e.g., ANGLEUNIT["degree",0.017,ID["EPSG",9122]]).
+    /// Uses bracket counting so nested `]` inside the node are handled correctly.
+    /// On return, `self.current` is the token after the node's closing `]`.
+    fn skip_balanced_node(&mut self) -> Result<(), Wkt2Error> {
+        // The current token is the node keyword (e.g., ANGLEUNIT). We need to
+        // find the opening `[`, then count brackets until we find the matching `]`.
+        let mut depth: i32 = 0;
+        let mut started = false;
+
+        while let Some(token) = self.current.take() {
+            match token {
+                Token::OpenBracket => {
+                    depth += 1;
+                    started = true;
+                }
+                Token::CloseBracket => {
+                    depth -= 1;
+                    if started && depth == 0 {
+                        // Found the matching close — advance past it.
+                        self.current = self.lexer.next_token()?;
+                        return Ok(());
+                    }
+                }
+                _ => {}
+            }
+            self.current = self.lexer.next_token()?;
+        }
+
+        Err(Wkt2Error::UnexpectedEof)
     }
 
     fn skip_until_bracket(&mut self) -> Result<(), Wkt2Error> {

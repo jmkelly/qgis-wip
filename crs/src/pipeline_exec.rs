@@ -840,7 +840,7 @@ mod tests {
     #[test]
     fn helmert_conventions_differ() {
         // The two conventions should produce different results when rotations are non-zero.
-        // Use non-proportional input/rotations so the difference is non-zero.
+        // Choose input where x*ry != y*rx so the z components differ.
         let pv = parse(
             "+proj=pipeline +step +proj=helmert +x=0 +y=0 +z=0 +rx=10 +ry=20 +rz=5 +convention=position_vector",
         )
@@ -849,8 +849,8 @@ mod tests {
             "+proj=pipeline +step +proj=helmert +x=0 +y=0 +z=0 +rx=10 +ry=20 +rz=5 +convention=coordinate_frame",
         )
         .unwrap();
-        let (pvx, pvy, pvz, _) = execute_pipeline(&pv, 1000.0, 2000.0, 3000.0, 0.0).unwrap();
-        let (cfx, cfy, cfz, _) = execute_pipeline(&cf, 1000.0, 2000.0, 3000.0, 0.0).unwrap();
+        let (pvx, pvy, pvz, _) = execute_pipeline(&pv, 1000.0, 3000.0, 5000.0, 0.0).unwrap();
+        let (cfx, cfy, cfz, _) = execute_pipeline(&cf, 1000.0, 3000.0, 5000.0, 0.0).unwrap();
         assert!((pvx - cfx).abs() > 1e-9, "conventions should differ in x");
         assert!((pvy - cfy).abs() > 1e-9, "conventions should differ in y");
         assert!((pvz - cfz).abs() > 1e-9, "conventions should differ in z");
@@ -891,9 +891,8 @@ mod tests {
             "+proj=pipeline +step +proj=unitconvert +xy_in=deg +xy_out=rad +step +proj=push +v_3 +step +proj=cart +ellps=GRS80 +step +proj=helmert +x=0.06155 +y=-0.01087 +z=-0.04019 +rx=-0.0394924 +ry=-0.0327221 +rz=-0.0328979 +s=-0.009994 +convention=coordinate_frame",
         )
         .unwrap();
-        let lon = 12.0_f64.to_radians();
-        let lat = 55.0_f64.to_radians();
-        let (x, y, z, _) = execute_pipeline(&p, lon, lat, 0.0, 0.0).unwrap();
+        // The pipeline starts with unitconvert deg→rad, so input is in degrees.
+        let (x, y, z, _) = execute_pipeline(&p, 12.0, 55.0, 0.0, 0.0).unwrap();
         // After cart GRS80: (3586469.656816, 762327.658787, 5201383.523088)
         // After helmert cf: (3586470.386090, 762327.216436, 5201383.007912)
         assert!((x - 3_586_470.386_090).abs() < 1e-3, "x = {x}");

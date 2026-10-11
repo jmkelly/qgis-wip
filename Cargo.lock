@@ -1371,6 +1371,7 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "geo"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1406,6 +1407,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5a7f08910fd98737a6eda7568e7c5e645093e073328eeef49758cfe8b0489c7"
 dependencies = [
  "libm",
+=======
+name = "geo-types"
+version = "0.7.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "777d18aa0f12f8b285331cd867133ee14422b3f023f6d388034c47d43e28786a"
+dependencies = [
+ "approx",
+ "num-traits",
+ "serde",
+ "thiserror 2.0.21",
+>>>>>>> f7d4440 (Fix WKT2 parsing and proj4rs transform API; drop build artifacts)
 ]
 
 [[package]]
@@ -3112,7 +3124,11 @@ dependencies = [
  "lazy_static",
  "proj4rs",
  "regex",
+<<<<<<< HEAD
  "thiserror 2.0.12",
+=======
+ "thiserror 2.0.21",
+>>>>>>> f7d4440 (Fix WKT2 parsing and proj4rs transform API; drop build artifacts)
 ]
 
 [[package]]
