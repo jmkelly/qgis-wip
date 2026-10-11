@@ -6,3 +6,11 @@ license.workspace = true
 description = "Server (WMS/WFS/etc.) for QGIS Rust port"
 
 [dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tower = "=0.5.3"
