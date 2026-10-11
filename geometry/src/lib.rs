@@ -16,6 +16,11 @@
 //! * Overlay operations: union, intersection, difference, symmetric_difference
 //! * Buffer and simplify operations
 //!
+//! Scope (bead qgis-s4i.2, WKB WKT WKT2 IO):
+//! * WKB reader/writer (ISO + EWKB) — see [`wkb`]
+//! * WKT reader/writer — see [`wkt`]
+//! * WKT2:2019 reader/writer — see [`wkt2`]
+//!
 //! Matches the QGIS `QgsGeometry` / `QgsPoint` / `QgsLineString` /
 //! `QgsPolygon` / `QgsMulti*` class hierarchy. Full GEOS parity (robust
 //! predicates, overlay operations) is deferred to later hardening beads.
@@ -33,6 +38,9 @@ mod polygon;
 mod validity;
 mod predicates;
 mod simplify;
+mod wkb;
+mod wkt;
+mod wkt2;
 
 // Point types
 pub use point::{Dimension, Point};
@@ -61,3 +69,12 @@ pub use overlay::{difference, intersection, symmetric_difference, union};
 // Buffer and simplify
 pub use buffer::buffer;
 pub use simplify::{simplify, simplify_vw};
+
+// WKB reader/writer
+pub use wkb::{read_geometry as read_wkb, write_geometry as write_wkb, WkbError, WkbHeader};
+
+// WKT reader/writer
+pub use wkt::{read_geometry as read_wkt, write_geometry as write_wkt, WktError};
+
+// WKT2:2019 reader/writer
+pub use wkt2::{read_geometry as read_wkt2, write_geometry as write_wkt2, Wkt2Error};
