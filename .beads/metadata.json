@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "qgis",
+  "project_id": "3794ffd4-cc23-4d27-b809-d840ed713c33"
+}
