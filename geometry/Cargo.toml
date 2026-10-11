@@ -6,3 +6,4 @@ license.workspace = true
 description = "Geometry primitives for QGIS Rust port (replacing GEOS)"
 
 [dependencies]
+geo = { workspace = true }
