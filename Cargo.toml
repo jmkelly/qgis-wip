@@ -12,6 +12,9 @@ members = [
     "pyo3",
     "gui",
     "qgis-bench",
+    "raster",
+    "mesh",
+    "pointcloud",
 ]
 
 [workspace.package]

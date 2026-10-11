@@ -3049,8 +3049,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "qgis-mesh"
+version = "0.1.0"
+dependencies = [
+ "qgis-geometry",
+]
+
+[[package]]
 name = "qgis-oracle"
 version = "0.1.0"
+
+[[package]]
+name = "qgis-pointcloud"
+version = "0.1.0"
+dependencies = [
+ "qgis-geometry",
+]
 
 [[package]]
 name = "qgis-providers"
@@ -3061,6 +3075,13 @@ name = "qgis-pyo3"
 version = "0.1.0"
 dependencies = [
  "pyo3",
+]
+
+[[package]]
+name = "qgis-raster"
+version = "0.1.0"
+dependencies = [
+ "qgis-geometry",
 ]
 
 [[package]]
