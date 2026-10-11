@@ -14,13 +14,21 @@
 
 #![forbid(unsafe_code)]
 
+pub mod ensemble;
 pub mod facade;
+#[cfg(feature = "grids")]
+pub mod grids;
 pub mod pipeline;
 pub mod pipeline_exec;
+pub mod towgs84;
 pub mod wkt2;
 
+pub use ensemble::{resolve_ensemble, EnsembleError, ResolvedMember};
 pub use facade::{CrsTransform, TransformError};
+#[cfg(feature = "grids")]
+pub use grids::{load_ntv2, load_ntv2_from_file, GridCatalog, GridError, Ntv2Grid};
 pub use pipeline_exec::{execute_pipeline, PipelineError, UnitKind};
+pub use towgs84::{Towgs84, Towgs84Error};
 pub use wkt2::{parse_wkt2, ParsedCrs, Wkt2Error};
 
 use std::f64::consts::PI;
