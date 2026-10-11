@@ -141,6 +141,10 @@ These are the E2 acceptance boundary. Re-check every one at E9 hardening (`qgis-
 | Not PROJ — no coordinate-operation pipelines | `projinfo`/cct parity and PROJ's automatic transform selection | **resolved (b)**: degraded automatic selection via first-match heuristic; parity claim scoped to proj4rs-supported transforms only | qgis-qxu.4 |
 | Radians are the native angular unit | Convert at the crate boundary; degrees everywhere in `qgis-crs`'s public API | us | qgis-qxu.2 |
 | Upstream aims at proj4js parity, "not a replacement of PROJ" | We cannot assume upstream closes our gaps; track releases | us | track |
+| **DEFERRED** — GSB NADCON grids | `hgridshift` with .gsb files fails; NADCON datum shifts unsupported | — | qgis-qxu.3.3.1 |
+| **DEFERRED** — GTX vertical grids | `vgridshift` with .gtx files fails; vertical datum shifts unsupported | — | qgis-qxu.3.3.2 |
+| **DEFERRED** — Velocity models | PROJ velocity model support (`+model=`) not available | — | qgis-qxu.3.3.3 |
+| **DEFERRED** — Compound CRS (horizontal + vertical) | COMPD_CS transforms fail; vertical + horizontal combination unsupported | — | qgis-qxu.3.3.4 |
 
 ## projinfo/cct parity decision (bead qgis-qxu.4, 2026-10-11)
 
