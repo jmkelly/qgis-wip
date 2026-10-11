@@ -32,3 +32,5 @@ description = "Pure-Rust reimplementation of QGIS 4.x"
 iced = "=0.13.1"
 pyo3 = "=0.29.3"
 criterion = "=0.5.1"
+proj4rs = { version = "=0.1.4", features = ["geo-types"] }
+crs-definitions = { version = "=0.6.0", features = ["geo-types"] }

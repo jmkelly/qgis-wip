@@ -6,6 +6,8 @@ license.workspace = true
 description = "Coordinate Reference Systems for QGIS Rust port (replacing PROJ)"
 
 [dependencies]
+proj4rs = { workspace = true }
+crs-definitions = { workspace = true }
 lazy_static = "1.5"
 regex = "1.11"
 thiserror = "2.0"
