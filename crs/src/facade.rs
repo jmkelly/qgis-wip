@@ -68,8 +68,12 @@ impl CrsTransform {
     ///
     /// Returns [`TransformError::UnknownEpsgCode`] if the code is not in the dataset.
     pub fn from_epsg(epsg: i32) -> Result<Self, TransformError> {
+<<<<<<< HEAD
         let code = u16::try_from(epsg).map_err(|_| TransformError::UnknownEpsgCode(epsg))?;
         let proj_string = crs_definitions::from_code(code)
+=======
+        let proj_string = crs_definitions::from_code(epsg as u16)
+>>>>>>> qgis-qxu-5
             .ok_or(TransformError::UnknownEpsgCode(epsg))?
             .proj4
             .to_string();
@@ -94,6 +98,7 @@ impl CrsTransform {
         target: &CrsTransform,
     ) -> Result<(f64, f64), TransformError> {
         // Convert degrees to radians for proj4rs
+<<<<<<< HEAD
         let mut point = (x.to_radians(), y.to_radians());
 
 
@@ -101,13 +106,25 @@ impl CrsTransform {
             &self.inner,
             &target.inner,
             &mut point,
+=======
+        let mut xy = (x.to_radians(), y.to_radians());
+
+        proj4rs::transform::transform(
+            &self.inner,
+            &target.inner,
+            &mut xy,
+>>>>>>> qgis-qxu-5
         ).map_err(|e| TransformError::TransformFailed {
             reason: e.to_string(),
         })?;
         let (x_out_rad, y_out_rad) = point;
 
         // Convert radians back to degrees
+<<<<<<< HEAD
         Ok((point.0.to_degrees(), point.1.to_degrees()))
+=======
+        Ok((xy.0.to_degrees(), xy.1.to_degrees()))
+>>>>>>> qgis-qxu-5
     }
 
     /// Transforms a point in-place from this CRS to another CRS.
