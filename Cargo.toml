@@ -34,3 +34,8 @@ pyo3 = "=0.29.3"
 criterion = "=0.5.1"
 proj4rs = { version = "=0.1.4", features = ["geo-types"] }
 crs-definitions = { version = "=0.6.0", features = ["proj4", "wkt"] }
+axum = "=0.8.9"
+tokio = { version = "=1.49.0", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "signal"] }
+bytes = "=1.11.0"
+thiserror = "=2.0.12"
+tracing = "=0.1.44"
