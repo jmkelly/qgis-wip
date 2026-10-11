@@ -10,18 +10,29 @@
 //! * [`MultiPoint`], [`MultiLineString`], [`MultiPolygon`]
 //! * [`GeometryCollection`] and the [`Geometry`] enum
 //!
+//! Scope (bead qgis-s4i.3, predicates and overlay via geo):
+//! * Spatial predicates: contains, intersects, within, crosses, touches,
+//!   overlaps, disjoint, equals
+//! * Overlay operations: union, intersection, difference, symmetric_difference
+//! * Buffer and simplify operations
+//!
 //! Matches the QGIS `QgsGeometry` / `QgsPoint` / `QgsLineString` /
 //! `QgsPolygon` / `QgsMulti*` class hierarchy. Full GEOS parity (robust
 //! predicates, overlay operations) is deferred to later hardening beads.
 
 #![forbid(unsafe_code)]
 
+mod buffer;
 mod collection;
+mod geo_bridge;
 mod linestring;
 mod multi;
+mod overlay;
 mod point;
 mod polygon;
 mod validity;
+mod predicates;
+mod simplify;
 
 // Point types
 pub use point::{Dimension, Point};
@@ -40,3 +51,13 @@ pub use collection::{Geometry, GeometryCollection};
 
 // Validity
 pub use validity::ValidityError;
+
+// Spatial predicates
+pub use predicates::{contains, crosses, disjoint, equals, intersects, overlaps, touches, within};
+
+// Overlay operations
+pub use overlay::{difference, intersection, symmetric_difference, union};
+
+// Buffer and simplify
+pub use buffer::buffer;
+pub use simplify::{simplify, simplify_vw};
