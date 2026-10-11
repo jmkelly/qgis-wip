@@ -1,0 +1,8 @@
+[package]
+name = "qgis-spatial-index"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "STRtree spatial index for QGIS Rust port (replacing libspatialindex)"
+
+[dependencies]
