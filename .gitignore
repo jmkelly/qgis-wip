@@ -126,3 +126,4 @@ venv
 # Rust C++ oracle harness build output (bead qgis-uic.7)
 /rust/cpp_harness/build/
 /rust/target/
+target/
