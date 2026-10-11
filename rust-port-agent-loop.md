@@ -49,6 +49,13 @@ True data dependencies (task-level edges):
 `bd ready` is the scheduler. Only unblocked work is shown. Independent crates may overlap;
 do not start a task whose blockers are still open.
 
+### Bead template
+
+Every new bead MUST carry an executable acceptance check — a runnable shell command
+that returns 0 on success. See `.agents/skills/beads/template.md` for the standard
+format. The acceptance command is written into the bead's `--acceptance` field and
+verified by the reviewer.
+
 ## 3. Orchestrator loop (parallel worktree model)
 
 Parallel implementers are safe when each works in an isolated Paseo worktree with its own
@@ -75,11 +82,13 @@ gets:
 - Its own Paseo worktree (isolation=worktree), not a branch in the shared checkout.
 - Its own `CARGO_TARGET_DIR` (e.g., `target/<bead-id>`) so build caches never collide.
 
-When an implementer reports done, optionally spawn a reviewer (see §5), then:
+When an implementer reports done, close the bead, then:
 
 ```bash
 bd close <id> --suggest-next   # --suggest-next prints newly unblocked beads
 ```
+
+Review is batched per epic (see §5), not per bead.
 
 Repeat until `bd ready` is empty.
 
@@ -114,6 +123,7 @@ You are the implementer for QGIS Rust port bead <id>.
    Keep crates small; each must hold <5 min `cargo test`.
    Log gaps/decisions with: bd remember "bead <id>: <insight>"
 5. Quality gates before reporting done:
+    - Run the bead's acceptance command (from `bd show <id>`) — must exit 0.
     - cargo test for touched crates
     - cargo clippy -- -D warnings (if toolchain present)
     - oracle diff if harness exists (E0+), else note "oracle pending"
@@ -124,14 +134,18 @@ Rules: bd for tracking only, no markdown TODOs, no `bd edit`,
 no `bd import`, no treating .beads/issues.jsonl as source of truth.
 ```
 
-## 5. Reviewer prompt template (after each epic, or on risky beads)
+## 5. Reviewer prompt template (per epic)
+
+Review is batched per epic, not per bead. When all beads in an epic are closed,
+spawn one reviewer for the entire epic.
 
 ```
-You are the reviewer for bead <id>. Do NOT implement.
-1. bd show <id>; read the diff (git status / git diff).
-2. Check: scope match, ADR compliance (no FFI), tests pass,
-   acceptance criteria met.
-3. On failure: file a follow-up with
+You are the reviewer for epic <epic-id>. Do NOT implement.
+1. bd show <epic-id>; read all child beads and their acceptance commands.
+2. For each child bead, run its acceptance command from the repo root.
+3. Check: scope match, ADR compliance (no FFI), tests pass,
+   acceptance criteria met for every child.
+4. On failure: file a follow-up with
    bd create "Fix: <what>" --description="..." --type=bug --priority=1
    and report the new ID. Never silently fix + close.
 ```

@@ -50,8 +50,11 @@ bd update <id> --claim
 4. Create durable follow-up work when implementation reveals new tasks:
 
 ```bash
-bd create "Short title" --description="Why this exists and what needs to be done" --type=task --priority=2
+bd create "Short title" --description="Why this exists and what needs to be done" --acceptance="<runnable command>" --type=task --priority=2
 ```
+
+Every bead MUST carry an executable acceptance check (a shell command that returns 0
+on success). See `.agents/skills/beads/template.md` for the standard format.
 
 5. Close completed work:
 
