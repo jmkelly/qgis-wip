@@ -16,8 +16,10 @@
 
 pub mod pipeline;
 pub mod pipeline_exec;
+pub mod wkt2;
 
 pub use pipeline_exec::{execute_pipeline, PipelineError, UnitKind};
+pub use wkt2::{parse_wkt2, ParsedCrs, Wkt2Error};
 
 use std::f64::consts::PI;
 
