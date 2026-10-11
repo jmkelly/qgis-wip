@@ -21,6 +21,7 @@ mod linestring;
 mod multi;
 mod point;
 mod polygon;
+mod validity;
 
 // Point types
 pub use point::{Dimension, Point};
@@ -36,3 +37,6 @@ pub use multi::{MultiLineString, MultiPoint, MultiPolygon};
 
 // GeometryCollection and Geometry enum
 pub use collection::{Geometry, GeometryCollection};
+
+// Validity
+pub use validity::ValidityError;
