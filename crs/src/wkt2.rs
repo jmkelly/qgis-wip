@@ -180,15 +180,15 @@ enum Token {
 }
 
 /// Tokenizer for WKT2:2019 strings.
-struct Lexer<'a> {
-    input: &'a [char],
+struct Lexer {
+    input: Vec<char>,
     pos: usize,
 }
 
-impl<'a> Lexer<'a> {
-    fn new(input: &'a str) -> Self {
+impl Lexer {
+    fn new(input: &str) -> Self {
         Self {
-            input: &input.chars().collect::<Vec<_>>(),
+            input: input.chars().collect(),
             pos: 0,
         }
     }
@@ -309,13 +309,13 @@ impl<'a> Lexer<'a> {
 }
 
 /// Parser for WKT2:2019 CRS strings.
-pub struct Wkt2Parser<'a> {
-    lexer: Lexer<'a>,
+pub struct Wkt2Parser {
+    lexer: Lexer,
     current: Option<Token>,
 }
 
-impl<'a> Wkt2Parser<'a> {
-    pub fn new(input: &'a str) -> Self {
+impl Wkt2Parser {
+    pub fn new(input: &str) -> Self {
         let mut lexer = Lexer::new(input);
         // Pre-read first token
         let current = lexer.next_token().ok().flatten();
@@ -610,20 +610,17 @@ impl<'a> Wkt2Parser<'a> {
 
         // Parse ellipsoid or ensemble
         let mut ensemble = None;
-        let ellipsoid = match self.current.take() {
+        let ellipsoid = match self.current {
             Some(Token::Word(ref w)) if w.eq_ignore_ascii_case("ELLIPSOID") => {
-                let eid = self.current.take();
                 self.current = self.lexer.next_token()?;
                 Some(self.parse_ellipsoid()?)
             }
             Some(Token::Word(ref w)) if w.eq_ignore_ascii_case("ENSEMBLE") => {
-                let eid = self.current.take();
                 self.current = self.lexer.next_token()?;
                 ensemble = Some(self.parse_ensemble()?);
                 None
             }
             _ => {
-                self.current = eid;
                 return Err(Wkt2Error::MissingNode {
                     node: "ELLIPSOID or ENSEMBLE".to_string(),
                 })

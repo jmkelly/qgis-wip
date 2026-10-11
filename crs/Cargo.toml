@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Coordinate Reference Systems for QGIS Rust port (replacing PROJ)"
 
+[features]
+# Opt-in NTV2 and GeoTIFF multi-grid loading (behind feature flag per ADR 0006)
+grids = []
+
 [dependencies]
 proj4rs = { workspace = true }
 crs-definitions = { workspace = true }

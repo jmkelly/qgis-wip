@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Direction"],"fn":["transform"],"trait":["Transform","TransformClosure"]};
