@@ -1,17 +1,17 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/geometry",
-    "crates/crs",
-    "crates/expression",
-    "crates/fixtures",
-    "crates/oracle",
-    "crates/providers",
-    "crates/analysis",
-    "crates/server",
-    "crates/pyo3",
-    "crates/gui",
-    "crates/qgis-bench",
+    "geometry",
+    "crs",
+    "expression",
+    "fixtures",
+    "oracle",
+    "providers",
+    "analysis",
+    "server",
+    "pyo3",
+    "gui",
+    "qgis-bench",
 ]
 
 [workspace.package]
@@ -33,4 +33,4 @@ iced = "=0.13.1"
 pyo3 = "=0.29.3"
 criterion = "=0.5.1"
 proj4rs = { version = "=0.1.4", features = ["geo-types"] }
-crs-definitions = { version = "=0.6.0", features = ["geo-types"] }
+crs-definitions = { version = "=0.6.0", features = ["proj4", "wkt"] }
