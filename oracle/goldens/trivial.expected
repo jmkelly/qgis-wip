@@ -1,0 +1,7 @@
+backend: cpp/0.1.0
+fixture: trivial.txt
+bytes: 25
+lines: 2
+---
+hello oracle
+second line

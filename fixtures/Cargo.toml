@@ -1,0 +1,6 @@
+[package]
+name = "qgis-fixtures"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Fixture store catalog for the QGIS Rust port oracle"

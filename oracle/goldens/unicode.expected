@@ -1,0 +1,7 @@
+backend: cpp/0.1.0
+fixture: unicode.txt
+bytes: 24
+lines: 2
+---
+héllo wörld
+日本語

@@ -1,0 +1,11 @@
+[package]
+name = "qgis-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "GUI for QGIS Rust port (iced + wgpu, built last per ADR-0002)"
+
+[dependencies]
+iced = { workspace = true, features = ["canvas"] }
+qgis-geometry = { path = "../geometry" }
+qgis-crs = { path = "../crs" }

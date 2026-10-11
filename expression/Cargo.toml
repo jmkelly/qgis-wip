@@ -1,0 +1,8 @@
+[package]
+name = "qgis-expression"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Expression engine for QGIS Rust port (replacing Qwt-expression)"
+
+[dependencies]

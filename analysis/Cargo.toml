@@ -1,0 +1,8 @@
+[package]
+name = "qgis-analysis"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Analysis tools for QGIS Rust port"
+
+[dependencies]

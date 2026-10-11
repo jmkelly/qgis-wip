@@ -1,0 +1,5 @@
+backend: cpp/0.1.0
+fixture: empty.txt
+bytes: 0
+lines: 0
+---

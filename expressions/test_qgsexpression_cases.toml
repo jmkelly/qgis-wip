@@ -1,0 +1,170 @@
+# Expression test cases extracted from the QGIS 4 test suite:
+#   tests/src/python/test_qgsexpression.py
+# (QGIS Project, GPL-2.0-or-later)
+#
+# Each case records an expression and the expected result of
+# QgsExpression::simplified().dump() (or evaluate() where noted) as
+# asserted by the upstream test. These are the inputs the Rust
+# expression engine (crates/expression) must reproduce.
+#
+# Case schema:
+#   expression  - source expression string
+#   expected    - expected simplified dump / evaluated result ("NULL" = None)
+#   source_test - test method in test_qgsexpression.py that asserts this case
+#   description - what the case exercises
+
+[case.neg_unary_double]
+expression = "-(-5)"
+expected = "5"
+source_test = "test_simplified_expressions"
+description = "Double unary negation folds to a positive literal."
+
+[case.neg_unary_triple]
+expression = "-(-(-5))"
+expected = "-5"
+source_test = "test_simplified_expressions"
+description = "Triple unary negation folds to a negative literal."
+
+[case.not_string_literal]
+expression = "NOT \"asd\""
+expected = "NOT asd"
+source_test = "test_simplified_expressions"
+description = "NOT on a non-boolean literal is not folded."
+
+[case.not_false]
+expression = "NOT false"
+expected = "1"
+source_test = "test_simplified_expressions"
+description = "NOT false folds to 1 (dump renders true as 1)."
+
+[case.not_true]
+expression = "NOT true"
+expected = "0"
+source_test = "test_simplified_expressions"
+description = "NOT true folds to 0 (dump renders false as 0)."
+
+[case.not_not_false]
+expression = "NOT NOT false"
+expected = "0"
+source_test = "test_simplified_expressions"
+description = "Cancelling double NOT folds to 0."
+
+[case.addition_folds]
+expression = "1+2"
+expected = "3"
+source_test = "test_simplified_expressions"
+description = "Constant integer addition folds."
+
+[case.arith_parens_fold]
+expression = "(1 + 2) * 4"
+expected = "12"
+source_test = "test_simplified_expressions"
+description = "Parenthesized constant arithmetic folds."
+
+[case.mixed_type_mul]
+expression = "(1 + 2) * \"asd\""
+expected = "3 * asd"
+source_test = "test_simplified_expressions"
+description = "Constant subexpression folds inside a mixed-type multiplication."
+
+[case.mixed_type_add]
+expression = "(1 + \"asd\") * 4"
+expected = "(1 + asd) * 4"
+source_test = "test_simplified_expressions"
+description = "Non-foldable addition stays parenthesized under multiplication."
+
+[case.sub_negative_folds]
+expression = "(1 - (-2)) * 4"
+expected = "12"
+source_test = "test_simplified_expressions"
+description = "Subtraction of a negated constant folds."
+
+[case.div_mixed_stays]
+expression = "(1 - (1/'a')) * 4"
+expected = "(1 - 1 / 'a') * 4"
+source_test = "test_simplified_expressions"
+description = "Division by a string literal is preserved with spacing."
+
+[case.concat_folds]
+expression = "'abc' || 'def'"
+expected = "'abcdef'"
+source_test = "test_simplified_expressions"
+description = "String concatenation of literals folds to one quoted literal."
+
+[case.lower_literal_no_fold]
+expression = "lower('HELLO')"
+expected = "lower('HELLO')"
+source_test = "test_simplified_expressions"
+description = "Function call on an already-constant argument is not folded."
+
+[case.lower_concat_folds]
+expression = "lower('HEL' || 'LO')"
+expected = "lower('HELLO')"
+source_test = "test_simplified_expressions"
+description = "Concatenation inside a function argument folds first."
+
+[case.case_when_true]
+expression = "CASE WHEN true THEN \"field_a\" ELSE \"field_b\" END"
+expected = "field_a"
+source_test = "test_simplified_expressions"
+description = "CASE with a true condition collapses to the THEN branch."
+
+[case.case_when_false_no_else]
+expression = "CASE WHEN false THEN \"field_a\" END"
+expected = "NULL"
+source_test = "test_simplified_expressions"
+description = "CASE with false condition and no ELSE yields NULL."
+
+[case.case_when_multi_branch]
+expression = "CASE WHEN false THEN \"field_a\" WHEN true THEN \"field_c\" ELSE \"field_b\" END"
+expected = "field_c"
+source_test = "test_simplified_expressions"
+description = "Multi-branch CASE collapses at the first true WHEN."
+
+[case.in_list_hit]
+expression = "1 IN (1, 2, 3)"
+expected = "TRUE"
+source_test = "test_simplified_expressions"
+description = "IN with a constant hit list folds to TRUE."
+
+[case.in_list_miss]
+expression = "5 IN (1, 2, 3)"
+expected = "0"
+source_test = "test_simplified_expressions"
+description = "IN with a constant miss list folds to 0."
+
+[case.not_in_list_hit]
+expression = "'a' NOT IN ('b', 'c')"
+expected = "1"
+source_test = "test_simplified_expressions"
+description = "NOT IN with constant lists folds to 1 on hit."
+
+[case.not_in_list_miss]
+expression = "'a' NOT IN ('b', 'c', 'a')"
+expected = "FALSE"
+source_test = "test_simplified_expressions"
+description = "NOT IN with constant lists folds to FALSE on miss."
+
+[case.in_list_arith]
+expression = "6 IN (1 + 1, 2 * 3, \"a\")"
+expected = "TRUE"
+source_test = "test_simplified_expressions"
+description = "IN list elements fold arithmetically before the membership test."
+
+[case.eval_template]
+expression = "eval_template('123 [% \"b\" %] 789')"
+expected = "123 456 789"
+source_test = "testEvalTemplate"
+description = "Template evaluation substitutes [% \"b\" %] from the feature context (b=456)."
+
+[case.between_parses]
+expression = "'b' between 'a' AND 'c'"
+expected = "<valid>"
+source_test = "testBetween"
+description = "BETWEEN with AND keyword parses without parser errors."
+
+[case.is_false_parses]
+expression = "True is False"
+expected = "<valid, no eval error>"
+source_test = "testSuccessfulEvaluationReturnsNoEvalErrorString"
+description = "IS comparison parses and evaluates with an empty eval error string."

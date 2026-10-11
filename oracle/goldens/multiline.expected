@@ -1,0 +1,8 @@
+backend: cpp/0.1.0
+fixture: multiline.txt
+bytes: 16
+lines: 5
+---
+one
+two
+three

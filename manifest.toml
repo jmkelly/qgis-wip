@@ -1,0 +1,225 @@
+# qgis-fixtures store manifest
+#
+# Catalog of oracle fixtures collected from the QGIS 4 source tree
+# (tests/testdata/, tests/src/python/). Parsed by the qgis-fixtures crate
+# (crates/fixtures) using a constrained TOML subset: [meta] string pairs
+# plus [fixture.<name>] sections with the keys below.
+#
+# Fixture entry keys:
+#   category    - one of: qgs-project, style, expression, provider-sample
+#   source      - origin path in the QGIS 4 tree, or "synthetic"
+#   path        - fixture file path relative to this manifest's directory
+#   sidecars    - optional array of additional files required by the fixture
+#   description - what the fixture exercises
+#
+# All fixtures in this store are real QGIS 4 test data (no synthetic
+# entries yet). See README.md in this directory for provenance and
+# licensing.
+
+[meta]
+name = "qgis4-oracle-fixtures"
+version = "1"
+description = "Golden input fixtures for the QGIS Rust port oracle, collected from the QGIS 4 test suite."
+
+# ---------------------------------------------------------------- projects
+
+[fixture.joins]
+category = "qgs-project"
+source = "tests/testdata/joins.qgs"
+path = "qgs-projects/joins.qgs"
+description = "Two OGR polygon layers with a layer join defined; exercises project parsing and join resolution. Layer sources reference absolute paths from the QGIS CI machine."
+
+[fixture.relations]
+category = "qgs-project"
+source = "tests/testdata/relations.qgs"
+path = "qgs-projects/relations.qgs"
+description = "Project with inter-layer relations; exercises relation parsing from the project file."
+
+[fixture.quickapp_project]
+category = "qgs-project"
+source = "tests/testdata/quickapp_project.qgs"
+path = "qgs-projects/quickapp_project.qgs"
+description = "Multi-layer project used by the quick-app tests; exercises layer tree, CRS and project settings parsing."
+
+[fixture.xyztiles]
+category = "qgs-project"
+source = "tests/testdata/xyztiles.qgs"
+path = "qgs-projects/xyztiles.qgs"
+description = "Project referencing an XYZ tiles raster source; exercises raster tile provider configuration in project files."
+
+[fixture.selective_masking]
+category = "qgs-project"
+source = "tests/testdata/selective_masking.qgs"
+path = "qgs-projects/selective_masking.qgs"
+description = "Project using selective masking (label masking) settings; exercises masking configuration parsing."
+
+[fixture.layout_atlas_table]
+category = "qgs-project"
+source = "tests/testdata/layout_atlas_table.qgs"
+path = "qgs-projects/layout_atlas_table.qgs"
+description = "Project with a print layout using an atlas over a table; exercises layout and atlas project-item parsing."
+
+[fixture.layer_rendering_order]
+category = "qgs-project"
+source = "tests/testdata/layer_rendering_order_qgis3_project.qgs"
+path = "qgs-projects/layer_rendering_order_qgis3_project.qgs"
+description = "QGIS 3 era project file exercising custom layer render order; exercises backward-compatible project parsing."
+
+[fixture.broken_relations_qgz]
+category = "qgs-project"
+source = "tests/testdata/broken_relations2.qgz"
+path = "qgs-projects/broken_relations2.qgz"
+description = "Zipped .qgz project (contains broken_relations2.qgs plus a style sqlite db) with intentionally broken relations; exercises .qgz container unpacking and error-tolerant project loading."
+
+[fixture.selective_masking_qgz]
+category = "qgs-project"
+source = "tests/testdata/selective_masking_fill_symbollayer.qgz"
+path = "qgs-projects/selective_masking_fill_symbollayer.qgz"
+description = "Zipped .qgz project exercising selective masking on fill symbol layers; exercises .qgz container unpacking."
+
+# ------------------------------------------------------------------ styles
+
+[fixture.style_points]
+category = "style"
+source = "tests/testdata/points.qml"
+path = "styles/points.qml"
+description = "Categorized renderer style for a point layer with edit widgets; exercises QML style parsing."
+
+[fixture.style_lines]
+category = "style"
+source = "tests/testdata/lines.qml"
+path = "styles/lines.qml"
+description = "Categorized renderer style for a line layer; exercises QML style parsing."
+
+[fixture.style_polys]
+category = "style"
+source = "tests/testdata/polys.qml"
+path = "styles/polys.qml"
+description = "Categorized renderer style for a polygon layer; exercises QML style parsing."
+
+[fixture.style_points_single_symbol]
+category = "style"
+source = "tests/testdata/points_single_symbol.qml"
+path = "styles/points_single_symbol.qml"
+description = "Simple single-symbol point style; exercises the simplest QML style path."
+
+[fixture.style_lines_single_symbol]
+category = "style"
+source = "tests/testdata/lines_single_symbol.qml"
+path = "styles/lines_single_symbol.qml"
+description = "Simple single-symbol line style; exercises the simplest QML style path."
+
+[fixture.style_points_graduated]
+category = "style"
+source = "tests/testdata/points_graduated_symbol.qml"
+path = "styles/points_graduated_symbol.qml"
+description = "Graduated symbol renderer on a numeric attribute; exercises class breaks parsing."
+
+[fixture.style_polys_gradient]
+category = "style"
+source = "tests/testdata/polys_gradient_symbol.qml"
+path = "styles/polys_gradient_symbol.qml"
+description = "Gradient fill symbol layer; exercises gradient symbol parsing."
+
+[fixture.style_polys_shapeburst]
+category = "style"
+source = "tests/testdata/polys_shapeburst_symbol.qml"
+path = "styles/polys_shapeburst_symbol.qml"
+description = "Shapeburst fill symbol layer; exercises shapeburst symbol parsing."
+
+[fixture.style_inverted_polys]
+category = "style"
+source = "tests/testdata/inverted_polys_single.qml"
+path = "styles/inverted_polys_single.qml"
+description = "Inverted polygon renderer; exercises geometry-generator based rendering styles."
+
+[fixture.style_landsat_b1]
+category = "style"
+source = "tests/testdata/landsat_b1.qml"
+path = "styles/landsat_b1.qml"
+description = "Singleband pseudocolor raster style; exercises raster QML style parsing."
+
+[fixture.style_maprender_testdata]
+category = "style"
+source = "tests/testdata/maprender_testdata.qml"
+path = "styles/maprender_testdata.qml"
+description = "Large composite style used by the map render tests; exercises a wide range of QML symbol layer types."
+
+# -------------------------------------------------------------- expressions
+
+[fixture.expression_qgsexpression_cases]
+category = "expression"
+source = "tests/src/python/test_qgsexpression.py"
+path = "expressions/test_qgsexpression_cases.toml"
+description = "26 expression cases (expression + expected simplified dump) extracted from the upstream QgsExpression test suite; exercises the Rust expression parser, simplifier and evaluator."
+
+# ------------------------------------------------------- provider samples
+
+[fixture.provider_points_geojson]
+category = "provider-sample"
+source = "tests/testdata/points.geojson"
+path = "provider-samples/points.geojson"
+description = "Small GeoJSON point vector; exercises the GeoJSON provider on a minimal file."
+
+[fixture.provider_bool_geojson]
+category = "provider-sample"
+source = "tests/testdata/bool_geojson.json"
+path = "provider-samples/bool_geojson.json"
+description = "GeoJSON with a boolean attribute; exercises type mapping of non-string GeoJSON fields."
+
+[fixture.provider_bug5598_shp]
+category = "provider-sample"
+source = "tests/testdata/bug5598.shp"
+path = "provider-samples/bug5598.shp"
+sidecars = ["provider-samples/bug5598.shx", "provider-samples/bug5598.dbf", "provider-samples/bug5598.prj"]
+description = "Minimal single-feature shapefile kept as a bug regression sample; exercises the OGR shapefile provider end to end."
+
+[fixture.provider_france_parts_shp]
+category = "provider-sample"
+source = "tests/testdata/france_parts.shp"
+path = "provider-samples/france_parts.shp"
+sidecars = ["provider-samples/france_parts.shx", "provider-samples/france_parts.dbf", "provider-samples/france_parts.prj", "provider-samples/france_parts.qpj", "provider-samples/france_parts.shp.xml"]
+description = "Multi-feature polygon shapefile with QGIS metadata sidecar XML; exercises shapefile reading plus metadata parsing."
+
+[fixture.provider_landsat_4326_tif]
+category = "provider-sample"
+source = "tests/testdata/landsat_4326.tif"
+path = "provider-samples/landsat_4326.tif"
+description = "Tiny 3x4 GeoTIFF in EPSG:4326; exercises the GDAL raster provider on a minimal raster."
+
+[fixture.provider_allinges_tif]
+category = "provider-sample"
+source = "tests/testdata/ALLINGES_RGF93_CC46_1_1.tif"
+path = "provider-samples/ALLINGES_RGF93_CC46_1_1.tif"
+sidecars = ["provider-samples/ALLINGES_RGF93_CC46_1_1.tfw"]
+description = "GeoTIFF in the projected RGF93 / CC46 CRS with a world file; exercises CRS handling and georeferencing in the raster provider."
+
+[fixture.provider_big_raster]
+category = "provider-sample"
+source = "tests/testdata/big_raster.tif"
+path = "provider-samples/big_raster.tif"
+description = "7200x5450 deflate-compressed 8-bit raster; exercises tiled/blocked raster reading at realistic size."
+
+[fixture.provider_domains_gpkg]
+category = "provider-sample"
+source = "tests/testdata/domains.gpkg"
+path = "provider-samples/domains.gpkg"
+description = "GeoPackage with attribute domains; exercises the GPKG provider and domain parsing."
+
+[fixture.provider_elev_gpx]
+category = "provider-sample"
+source = "tests/testdata/elev.gpx"
+path = "provider-samples/elev.gpx"
+description = "GPX track/waypoint file; exercises the GPX provider."
+
+[fixture.provider_geom_data_csv]
+category = "provider-sample"
+source = "tests/testdata/geom_data.csv"
+path = "provider-samples/geom_data.csv"
+description = "CSV with geometry columns; exercises the delimited text provider."
+
+[fixture.provider_checker_asc]
+category = "provider-sample"
+source = "tests/testdata/checker360by180.asc"
+path = "provider-samples/checker360by180.asc"
+description = "ESRI ASCII grid raster; exercises the AAIGrid raster provider."

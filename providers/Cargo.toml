@@ -1,0 +1,8 @@
+[package]
+name = "qgis-providers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Data providers for QGIS Rust port (replacing GDAL/SpatiaLite/PDAL/MDAL)"
+
+[dependencies]

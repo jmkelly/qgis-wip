@@ -1,0 +1,80 @@
+name: Rust Port CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.99.0"
+      - uses: Swatinem/rust-cache@v2
+      - name: Run workspace tests
+        working-directory: rust
+        run: cargo test --workspace
+
+  clippy:
+    name: clippy lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.99.0"
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Run clippy with -D warnings
+        working-directory: rust
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  bench-compile:
+    name: bench compile check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.99.0"
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify benches compile
+        working-directory: rust
+        run: cargo bench -p qgis-bench --no-run
+
+  oracle:
+    name: oracle smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.99.0"
+      - uses: Swatinem/rust-cache@v2
+      - name: Run oracle on trivial fixture
+        working-directory: rust
+        run: cargo run -p qgis-oracle -- crates/oracle/fixtures/trivial.txt
+
+  geiger:
+    name: geiger (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.99.0"
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-geiger
+        run: cargo install cargo-geiger --locked
+      - name: Run cargo-geiger
+        working-directory: rust
+        run: cargo geiger --workspace

@@ -1,0 +1,8 @@
+[package]
+name = "qgis-oracle"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "C++/Rust diff oracle harness with golden-file store for the QGIS Rust port"
+
+[dependencies]

@@ -1,0 +1,7 @@
+backend: cpp/0.1.0
+fixture: crlf.txt
+bytes: 13
+lines: 2
+---
+alpha
+beta

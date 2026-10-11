@@ -1,0 +1,9 @@
+[package]
+name = "qgis-pyo3"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PyO3 Python bindings for QGIS Rust port (replacing SIP/PyQt6)"
+
+[dependencies]
+pyo3 = { workspace = true, features = ["extension-module"] }

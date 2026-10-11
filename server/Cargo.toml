@@ -1,0 +1,8 @@
+[package]
+name = "qgis-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Server (WMS/WFS/etc.) for QGIS Rust port"
+
+[dependencies]
