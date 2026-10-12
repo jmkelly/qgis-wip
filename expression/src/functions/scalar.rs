@@ -85,6 +85,8 @@ fn as_f64(arg: &Literal, func: &str) -> Result<f64, EvalError> {
         Literal::Float(f) => Ok(*f),
         Literal::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
         Literal::Null => Ok(0.0),
+        Literal::Date(_) => Ok(0.0),
+        Literal::Array(_) => Ok(0.0),
         Literal::Str(s) => s.parse::<f64>().map_err(|_| EvalError::TypeError {
             function: func.to_string(),
             message: format!("cannot convert string '{}' to number", s),
@@ -98,6 +100,8 @@ fn as_i64(arg: &Literal, func: &str) -> Result<i64, EvalError> {
         Literal::Float(f) => Ok(*f as i64),
         Literal::Bool(b) => Ok(if *b { 1 } else { 0 }),
         Literal::Null => Ok(0),
+        Literal::Date(_) => Ok(0),
+        Literal::Array(_) => Ok(0),
         Literal::Str(s) => s.parse::<i64>().map_err(|_| EvalError::TypeError {
             function: func.to_string(),
             message: format!("cannot convert string '{}' to integer", s),
@@ -377,6 +381,8 @@ fn to_int(args: &[Literal]) -> Result<Literal, EvalError> {
             }
         }),
         Literal::Null => Ok(Literal::Null),
+        Literal::Date(_) => Ok(Literal::Null),
+        Literal::Array(_) => Ok(Literal::Null),
     }
 }
 
@@ -393,6 +399,8 @@ fn to_real(args: &[Literal]) -> Result<Literal, EvalError> {
             }
         }),
         Literal::Null => Ok(Literal::Null),
+        Literal::Date(_) => Ok(Literal::Null),
+        Literal::Array(_) => Ok(Literal::Null),
     }
 }
 
@@ -410,7 +418,27 @@ fn to_string(args: &[Literal]) -> Result<Literal, EvalError> {
             }
         }
         Literal::Null => "".to_string(),
+        Literal::Date(s) => s.clone(),
+        Literal::Array(items) => {
+            let parts: Vec<String> = items.iter().map(literal_to_string_local).collect();
+            parts.join(",")
+        }
     }))
+}
+
+fn literal_to_string_local(lit: &Literal) -> String {
+    match lit {
+        Literal::Str(s) => s.clone(),
+        Literal::Date(s) => s.clone(),
+        Literal::Integer(i) => i.to_string(),
+        Literal::Float(f) => f.to_string(),
+        Literal::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+        Literal::Null => String::new(),
+        Literal::Array(items) => {
+            let parts: Vec<String> = items.iter().map(literal_to_string_local).collect();
+            parts.join(",")
+        }
+    }
 }
 
 #[cfg(test)]

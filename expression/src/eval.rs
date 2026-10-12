@@ -363,6 +363,8 @@ fn literals_equal(l: &Literal, r: &Literal) -> bool {
         (Float(a), Float(b)) => a == b,
         (Integer(a), Float(b)) | (Float(b), Integer(a)) => (*a as f64) == *b,
         (Str(a), Str(b)) => a == b,
+        (Date(a), Date(b)) => a == b,
+        (Array(a), Array(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| literals_equal(x, y)),
         _ => false,
     }
 }
@@ -375,6 +377,7 @@ fn compare_literals(l: &Literal, r: &Literal) -> Option<std::cmp::Ordering> {
         (Integer(a), Float(b)) => (*a as f64).partial_cmp(b),
         (Float(a), Integer(b)) => a.partial_cmp(&(*b as f64)),
         (Str(a), Str(b)) => Some(a.cmp(b)),
+        (Date(a), Date(b)) => Some(a.cmp(b)),
         _ => None,
     }
 }

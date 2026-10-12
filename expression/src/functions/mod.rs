@@ -4,6 +4,7 @@
 //! slice of evaluated argument literals and returns the result.
 
 pub mod conditional;
+pub mod date_array;
 pub mod scalar;
 pub mod string;
 
@@ -19,6 +20,7 @@ pub fn lookup(name: &str) -> Option<FunctionFn> {
     string::lookup(&lower)
         .or_else(|| conditional::lookup(&lower))
         .or_else(|| scalar::lookup(&lower))
+        .or_else(|| date_array::lookup(&lower))
 }
 
 /// Call a function by name with evaluated arguments.
@@ -35,6 +37,7 @@ pub fn arity_description(name: &str) -> Option<&'static str> {
     string::arity(&lower)
         .or_else(|| conditional::arity(&lower))
         .or_else(|| scalar::arity(&lower))
+        .or_else(|| date_array::arity(&lower))
 }
 
 #[cfg(test)]
@@ -53,6 +56,13 @@ mod tests {
         assert!(lookup("sin").is_some());
         assert!(lookup("pi").is_some());
         assert!(lookup("to_int").is_some());
+        assert!(lookup("now").is_some());
+        assert!(lookup("year").is_some());
+        assert!(lookup("array").is_some());
+        assert!(lookup("array_append").is_some());
+        assert!(lookup("array_length").is_some());
+        assert!(lookup("generate_series").is_some());
+        assert!(lookup("map_get").is_some());
     }
 
     #[test]

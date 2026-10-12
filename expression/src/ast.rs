@@ -15,6 +15,10 @@ pub enum Literal {
     Float(f64),
     /// String literal (without quotes).
     Str(String),
+    /// Date/datetime as ISO 8601 string.
+    Date(String),
+    /// Array of literals.
+    Array(Vec<Literal>),
 }
 
 impl fmt::Display for Literal {
@@ -25,6 +29,17 @@ impl fmt::Display for Literal {
             Literal::Integer(i) => write!(f, "{}", i),
             Literal::Float(fl) => write!(f, "{}", fl),
             Literal::Str(s) => write!(f, "'{}'", s),
+            Literal::Date(s) => write!(f, "date '{}'", s),
+            Literal::Array(items) => {
+                write!(f, "[")?;
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", item)?;
+                }
+                write!(f, "]")
+            }
         }
     }
 }
@@ -541,6 +556,8 @@ fn literals_equal(l: &Literal, r: &Literal) -> bool {
         (Float(a), Float(b)) => a == b,
         (Integer(a), Float(b)) | (Float(b), Integer(a)) => (*a as f64) == *b,
         (Str(a), Str(b)) => a == b,
+        (Date(a), Date(b)) => a == b,
+        (Array(a), Array(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| literals_equal(x, y)),
         _ => false,
     }
 }
@@ -567,6 +584,7 @@ fn compare_literals(l: &Literal, r: &Literal) -> Option<std::cmp::Ordering> {
         (Integer(a), Float(b)) => (*a as f64).partial_cmp(b),
         (Float(a), Integer(b)) => a.partial_cmp(&(*b as f64)),
         (Str(a), Str(b)) => Some(a.cmp(b)),
+        (Date(a), Date(b)) => Some(a.cmp(b)),
         _ => None,
     }
 }

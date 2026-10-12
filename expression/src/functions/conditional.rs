@@ -53,6 +53,8 @@ fn is_truthy(lit: &Literal) -> bool {
         Literal::Float(f) => *f != 0.0,
         Literal::Str(s) => !s.is_empty(),
         Literal::Null => false,
+        Literal::Date(_) => false,
+        Literal::Array(_) => false,
     }
 }
 

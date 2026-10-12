@@ -419,6 +419,11 @@ fn literal_to_string(lit: &Literal) -> String {
             }
         }
         Literal::Null => String::new(),
+        Literal::Date(s) => s.clone(),
+        Literal::Array(items) => {
+            let parts: Vec<String> = items.iter().map(literal_to_string).collect();
+            parts.join(",")
+        }
     }
 }
 
