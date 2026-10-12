@@ -4,6 +4,7 @@
 //! slice of evaluated argument literals and returns the result.
 
 pub mod conditional;
+pub mod scalar;
 pub mod string;
 
 use crate::ast::Literal;
@@ -17,6 +18,7 @@ pub fn lookup(name: &str) -> Option<FunctionFn> {
     let lower = name.to_ascii_lowercase();
     string::lookup(&lower)
         .or_else(|| conditional::lookup(&lower))
+        .or_else(|| scalar::lookup(&lower))
 }
 
 /// Call a function by name with evaluated arguments.
@@ -32,6 +34,7 @@ pub fn arity_description(name: &str) -> Option<&'static str> {
     let lower = name.to_ascii_lowercase();
     string::arity(&lower)
         .or_else(|| conditional::arity(&lower))
+        .or_else(|| scalar::arity(&lower))
 }
 
 #[cfg(test)]
@@ -45,6 +48,11 @@ mod tests {
         assert!(lookup("concat").is_some());
         assert!(lookup("coalesce").is_some());
         assert!(lookup("if").is_some());
+        assert!(lookup("abs").is_some());
+        assert!(lookup("sqrt").is_some());
+        assert!(lookup("sin").is_some());
+        assert!(lookup("pi").is_some());
+        assert!(lookup("to_int").is_some());
     }
 
     #[test]
