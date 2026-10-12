@@ -4,14 +4,24 @@
 //! See ADR-0001 for the no-FFI policy decision.
 
 pub mod ast;
+pub mod eval;
+pub mod functions;
 pub mod lexer;
 pub mod parser;
+pub mod regex;
 
 pub use ast::{
     simplify, BinaryOp, Expr, IsTarget, Literal, UnaryOp,
 };
+pub use eval::{evaluate, Context, EvalError};
 pub use lexer::{Keyword, LexError, Op, Token, lex};
 pub use parser::{ParseError, parse};
+
+/// Parse, simplify, and evaluate an expression in one step.
+pub fn eval_str(input: &str, ctx: &Context) -> Result<Literal, EvalError> {
+    let expr = parse_simplified(input).map_err(|e| EvalError::Nested(e.to_string()))?;
+    evaluate(&expr, ctx)
+}
 
 /// Parse and simplify an expression string in one step.
 pub fn parse_simplified(input: &str) -> Result<Expr, ParseError> {

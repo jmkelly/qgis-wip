@@ -9,7 +9,7 @@ members = [
     "oracle",
     "providers",
     "analysis",
-    "render",
+
     "server",
     "pyo3",
     "gui",
