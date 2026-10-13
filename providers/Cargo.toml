@@ -6,3 +6,5 @@ license.workspace = true
 description = "Data providers for QGIS Rust port (replacing GDAL/SpatiaLite/PDAL/MDAL)"
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

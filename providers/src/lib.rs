@@ -52,3 +52,19 @@ mod tests {
         assert!(p.is_valid());
     }
 }
+
+pub mod geojson;
+pub mod gpkg;
+
+pub mod driver_manager {
+    use std::collections::BTreeMap;
+    #[derive(Debug,Clone)]
+    pub struct DriverManager { providers: BTreeMap<String,String> }
+    impl DriverManager {
+        pub fn new() -> Self { Self { providers: BTreeMap::new() } }
+        pub fn register(&mut self, pattern: &str, name: &str) { self.providers.insert(pattern.to_string(), name.to_string()); }
+        pub fn lookup(&self, uri: &str) -> Option<&str> { self.providers.get(uri).map(|s| s.as_str()) }
+        pub fn list(&self) -> Vec<&str> { self.providers.values().map(|s| s.as_str()).collect() }
+    }
+    impl Default for DriverManager { fn default() -> Self { Self::new() } }
+}
