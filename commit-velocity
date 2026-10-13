@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# commit-velocity — measure commit velocity over a time window
+# Usage: ./commit-velocity [hours]   (default: 2)
+#
+# Baseline (2026-10-13 18:49–20:22): 16 commits / 1.5h ≈ 10.4 commits/hour
+#   - 8 feat, 5 merge, 2 WIP, 1 docs
+#   - 2 WIP commits = abandoned workstreams (beads too large)
+#   - 24 min dead gap (19:56 → 20:20)
+#   - 3 of 5 parallelizable DAG slots filled
+
+HOURS="${1:-2}"
+SINCE="${HOURS} hours ago"
+
+echo "=== Commit velocity (last ${HOURS}h) ==="
+echo ""
+
+# Total commits
+TOTAL=$(git log --since="$SINCE" --oneline | wc -l)
+echo "Total commits: $TOTAL"
+
+if [ "$TOTAL" -eq 0 ]; then
+    echo "No commits in the last ${HOURS}h."
+    exit 0
+fi
+
+# Time span
+FIRST=$(git log --since="$SINCE" --format='%ai' | tail -1 | awk '{print $2}')
+LAST=$(git log --since="$SINCE" --format='%ai' | head -1 | awk '{print $2}')
+SPAN_MIN=$(( ($(date -d "$LAST" +%s) - $(date -d "$FIRST" +%s)) / 60 ))
+if [ "$SPAN_MIN" -lt 1 ]; then SPAN_MIN=1; fi
+RATE=$(awk "BEGIN {printf \"%.1f\", $TOTAL * 60 / $SPAN_MIN}")
+
+echo "Time span: ${FIRST} → ${LAST} (${SPAN_MIN} min)"
+echo "Rate: ${RATE} commits/hour"
+echo ""
+
+# By type
+echo "By type:"
+git log --since="$SINCE" --format='%s' | grep -oP '^(feat|docs|fix|WIP|Merge|chore|refactor)' | sort | uniq -c | sort -rn | while read count type; do
+    pct=$(awk "BEGIN {printf \"%d\", $count * 100 / $TOTAL}")
+    echo "  ${type}: ${count} (${pct}%)"
+done
+echo ""
+
+# By workstream (qgis-XXX prefix)
+echo "By workstream:"
+git log --since="$SINCE" --format='%s' | grep -oP '(?<=qgis-)[a-z0-9]+(?=\.)' | sort | uniq -c | sort -rn | while read count ws; do
+    echo "  qgis-${ws}: ${count}"
+done
+echo ""
+
+# WIP commits (abandoned work)
+WIP=$(git log --since="$SINCE" --format='%s' | grep -c '^WIP:' || true)
+if [ "$WIP" -gt 0 ]; then
+    echo "WIP commits (abandoned work): ${WIP}"
+    git log --since="$SINCE" --format='  %h %s' | grep 'WIP:'
+    echo ""
+fi
+
+# Commits per 15-min bucket (identify dead time)
+echo "Commits per 15-min bucket:"
+git log --since="$SINCE" --format='%ai' | awk -F'[: ]' '{bucket=$1" "$2":"$3; print bucket}' | sort | uniq -c | while read count bucket; do
+    bar=$(printf '█%.0s' $(seq 1 "$count"))
+    echo "  ${bucket}  ${bar} ${count}"
+done
+echo ""
+
+echo "=== Target: >20 commits/hour, 0 WIP, all DAG slots filled ==="

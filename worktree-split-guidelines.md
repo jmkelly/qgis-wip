@@ -118,13 +118,84 @@ When merging back to main, order reduces conflicts:
 Merge in DAG order so each merge only touches files the previous merge
 didn't touch.
 
-## 8. Conflict prevention checklist (orchestrator, before dispatch)
+## 8. Bead size discipline
+
+**Target: one bead = one agent session (~30 min of work).**
+
+If a bead can't be completed in a single agent session, it's too large. Split it
+into sub-beads before dispatch. The cost of a merge (~2 min) is far less than
+the cost of a WIP cleanup (~10 min + lost context + orphaned work).
+
+Signs a bead is too large:
+- The description mentions "and" more than once
+- The acceptance criteria span multiple files
+- The estimated work is > 1 hour
+- A previous agent had to WIP-cleanup the bead (check bead notes for "WIP" or "workspace cleanup")
+
+**When in doubt, split.** A merge is cheap; a lost context window is not.
+
+## 9. Pre-session preparation
+
+All orchestration overhead must happen *before* the swarm starts, not during:
+
+- [ ] Guidelines written and committed
+- [ ] Interface skeletons locked (pub trait/struct/fn signatures)
+- [ ] File ownership maps built
+- [ ] Bead queue deep enough to fill all parallel DAG slots
+- [ ] Merge order planned (leaves → mid-tier → top-level)
+
+The first commit of a session should be a feature commit, not a docs commit.
+If you're writing guidelines mid-session, you lost 13+ minutes of feature time.
+
+## 10. Batch merges
+
+Don't merge each branch the moment it lands. Collect 2-3 completed branches
+and merge them in one batch:
+
+```bash
+# Wait for 2-3 branches to complete, then:
+git merge bd/qgis-3ce.5 bd/qgis-qxu.4 bd/qgis-0tn.7
+```
+
+This reduces orchestrator context-switching. Each merge costs ~2-3 min of
+orchestrator attention; batching 3 merges saves ~5 min.
+
+**Exception:** if a branch is blocking another (e.g., a leaf crate that a
+mid-tier crate depends on), merge it immediately.
+
+## 11. Intermediate commits
+
+Instruct agents to commit every 15-20 minutes, even if the work isn't fully
+done. Use a `WIP:` prefix. The orchestrator can squash or rebase later.
+
+A commit is a checkpoint, not a promise. Frequent commits:
+- Give the orchestrator visibility into progress
+- Reduce WIP loss when a session ends
+- Make it easier to identify which bead is stuck
+
+## 12. Rebase before merge
+
+Before merging a worktree branch, rebase it onto master and fast-forward:
+
+```bash
+git checkout bd/qgis-3ce.5
+git rebase master
+git checkout master
+git merge --ff-only bd/qgis-3ce.5
+```
+
+This keeps history linear, avoids merge commits, and makes `git log` more
+readable. Merge commits add noise and obscure the feature commit history.
+
+## 13. Conflict prevention checklist (orchestrator, before dispatch)
 
 - [ ] Every bead's file list is disjoint from every other bead in the same wave
 - [ ] Shared files (Cargo.lock, root Cargo.toml, goldens) are marked orchestrator-only
 - [ ] Public APIs for cross-crate dependencies are locked and recorded as beads
 - [ ] Merge order follows DAG (leaves → mid-tier → top-level)
 - [ ] Each worktree has its own CARGO_TARGET_DIR
+- [ ] Beads are small enough for one agent session (~30 min)
+- [ ] Guidelines and interfaces are committed *before* the session starts
 
 ## What this looks like in practice
 
