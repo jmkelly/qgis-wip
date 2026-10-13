@@ -13,12 +13,12 @@ pub mod regex;
 pub use ast::{
     simplify, BinaryOp, Expr, IsTarget, Literal, UnaryOp,
 };
-pub use eval::{evaluate, Context, EvalError};
+pub use eval::{evaluate, Context, EvalContext, EvalError, FeatureRef};
 pub use lexer::{Keyword, LexError, Op, Token, lex};
 pub use parser::{ParseError, parse};
 
 /// Parse, simplify, and evaluate an expression in one step.
-pub fn eval_str(input: &str, ctx: &Context) -> Result<Literal, EvalError> {
+pub fn eval_str(input: &str, ctx: &EvalContext) -> Result<Literal, EvalError> {
     let expr = parse_simplified(input).map_err(|e| EvalError::Nested(e.to_string()))?;
     evaluate(&expr, ctx)
 }

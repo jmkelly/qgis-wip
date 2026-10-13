@@ -12,11 +12,82 @@ use crate::functions;
 /// Context for expression evaluation: a map of field names to literal values.
 pub type Context = HashMap<String, Literal>;
 
+/// A reference to the current feature for feature/form scope.
+#[derive(Debug, Clone)]
+pub struct FeatureRef {
+    /// The feature ID.
+    pub id: i64,
+    /// The feature's attributes.
+    pub attributes: HashMap<String, Literal>,
+}
+
+/// Evaluation context with support for fields, variables, and scope.
+///
+/// Extends the simple [`Context`] (field-only) with:
+/// - **Variables**: values for `@variable` references
+/// - **Geometry**: the current feature's geometry for `$geometry` and related variables
+/// - **Feature**: the current feature for feature/form scope
+#[derive(Debug, Clone, Default)]
+pub struct EvalContext {
+    /// Field values (feature attributes).
+    pub fields: HashMap<String, Literal>,
+    /// Expression variables (`@variable`).
+    pub variables: HashMap<String, Literal>,
+    /// Current feature geometry (for `$geometry` and geometry variables).
+    pub geometry: Option<Literal>,
+    /// Current feature reference (for feature scope).
+    pub feature: Option<FeatureRef>,
+}
+
+impl EvalContext {
+    /// Create an empty evaluation context.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add a field value.
+    pub fn with_field(mut self, name: impl Into<String>, value: Literal) -> Self {
+        self.fields.insert(name.into(), value);
+        self
+    }
+
+    /// Add a variable value.
+    pub fn with_variable(mut self, name: impl Into<String>, value: Literal) -> Self {
+        self.variables.insert(name.into(), value);
+        self
+    }
+
+    /// Set the current geometry.
+    pub fn with_geometry(mut self, geometry: Literal) -> Self {
+        self.geometry = Some(geometry);
+        self
+    }
+
+    /// Set the current feature.
+    pub fn with_feature(mut self, feature: FeatureRef) -> Self {
+        self.feature = Some(feature);
+        self
+    }
+}
+
+impl From<HashMap<String, Literal>> for EvalContext {
+    fn from(fields: HashMap<String, Literal>) -> Self {
+        Self {
+            fields,
+            ..Default::default()
+        }
+    }
+}
+
 /// Errors that can occur during expression evaluation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum EvalError {
     /// A field reference was not found in the evaluation context.
     UnknownField(String),
+    /// A variable was not found in the evaluation context.
+    UnknownVariable(String),
+    /// No geometry is available in the evaluation context.
+    NoGeometry,
     /// A function was called with the wrong number of arguments.
     ArityError {
         function: String,
@@ -40,6 +111,8 @@ impl std::fmt::Display for EvalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             EvalError::UnknownField(name) => write!(f, "unknown field: {}", name),
+            EvalError::UnknownVariable(name) => write!(f, "unknown variable: {}", name),
+            EvalError::NoGeometry => write!(f, "no geometry available"),
             EvalError::ArityError {
                 function,
                 expected,
@@ -62,13 +135,20 @@ impl std::fmt::Display for EvalError {
 impl std::error::Error for EvalError {}
 
 /// Evaluate an expression AST to a literal value.
-pub fn evaluate(expr: &Expr, ctx: &Context) -> Result<Literal, EvalError> {
+pub fn evaluate(expr: &Expr, ctx: &EvalContext) -> Result<Literal, EvalError> {
     match expr {
         Expr::Literal(lit) => Ok(lit.clone()),
         Expr::FieldRef(name) => ctx
+            .fields
             .get(name)
             .cloned()
             .ok_or_else(|| EvalError::UnknownField(name.clone())),
+        Expr::Variable(name) => ctx
+            .variables
+            .get(name)
+            .cloned()
+            .ok_or_else(|| EvalError::UnknownVariable(name.clone())),
+        Expr::DollarVar(name) => eval_dollar_var(name, ctx),
         Expr::Unary(op, inner) => {
             let val = evaluate(inner, ctx)?;
             eval_unary(*op, val)
@@ -147,6 +227,32 @@ pub fn evaluate(expr: &Expr, ctx: &Context) -> Result<Literal, EvalError> {
             };
             Ok(Literal::Bool(if *negated { !is_match } else { is_match }))
         }
+    }
+}
+
+/// Evaluate a dollar-prefixed variable (e.g., `$geometry`, `$area`).
+fn eval_dollar_var(name: &str, ctx: &EvalContext) -> Result<Literal, EvalError> {
+    match name {
+        "geometry" | "currentgeometry" => ctx
+            .geometry
+            .clone()
+            .ok_or(EvalError::NoGeometry),
+        "area" | "length" | "x" | "y" | "x_at" | "y_at" => {
+            // Geometry-derived variables require geometry support.
+            // Return the geometry as a placeholder until geometry
+            // computation is available.
+            ctx.geometry
+                .clone()
+                .ok_or(EvalError::NoGeometry)
+        }
+        "currentfeature" => {
+            // Return the feature's ID as a placeholder.
+            ctx.feature
+                .as_ref()
+                .map(|f| Literal::Integer(f.id))
+                .ok_or(EvalError::UnknownVariable("currentfeature".to_string()))
+        }
+        _ => Err(EvalError::UnknownVariable(name.to_string())),
     }
 }
 
@@ -329,7 +435,7 @@ fn eval_case_when(
     operand: &Option<Box<Expr>>,
     whens: &[(Expr, Expr)],
     else_branch: &Option<Box<Expr>>,
-    ctx: &Context,
+    ctx: &EvalContext,
 ) -> Result<Literal, EvalError> {
     if let Some(op_expr) = operand {
         let op_val = evaluate(op_expr, ctx)?;
@@ -427,11 +533,11 @@ mod tests {
 
     fn eval_str(input: &str) -> Literal {
         let expr = parse(input).unwrap();
-        let ctx = Context::new();
+        let ctx = EvalContext::new();
         evaluate(&expr, &ctx).unwrap()
     }
 
-    fn eval_with_ctx(input: &str, ctx: &Context) -> Literal {
+    fn eval_with_ctx(input: &str, ctx: &EvalContext) -> Literal {
         let expr = parse(input).unwrap();
         evaluate(&expr, ctx).unwrap()
     }
@@ -481,7 +587,7 @@ mod tests {
     fn eval_division_by_zero() {
         let expr = parse("1 / 0").unwrap();
         assert!(matches!(
-            evaluate(&expr, &Context::new()),
+            evaluate(&expr, &EvalContext::new()),
             Err(EvalError::DivisionByZero)
         ));
     }
@@ -518,8 +624,9 @@ mod tests {
 
     #[test]
     fn eval_field_ref() {
-        let mut ctx = Context::new();
-        ctx.insert("name".to_string(), Literal::Str("Alice".to_string()));
+        let mut ctx = EvalContext::new();
+        ctx.fields
+            .insert("name".to_string(), Literal::Str("Alice".to_string()));
         assert_eq!(
             eval_with_ctx("\"name\"", &ctx),
             Literal::Str("Alice".to_string())
@@ -530,7 +637,7 @@ mod tests {
     fn eval_unknown_field_error() {
         let expr = parse("\"missing\"").unwrap();
         assert!(matches!(
-            evaluate(&expr, &Context::new()),
+            evaluate(&expr, &EvalContext::new()),
             Err(EvalError::UnknownField(_))
         ));
     }
@@ -597,7 +704,7 @@ mod tests {
     fn eval_arity_error() {
         let expr = parse("length()").unwrap();
         assert!(matches!(
-            evaluate(&expr, &Context::new()),
+            evaluate(&expr, &EvalContext::new()),
             Err(EvalError::ArityError { .. })
         ));
     }
@@ -606,8 +713,187 @@ mod tests {
     fn eval_unknown_function_error() {
         let expr = parse("nonexistent_func(1)").unwrap();
         assert!(matches!(
-            evaluate(&expr, &Context::new()),
+            evaluate(&expr, &EvalContext::new()),
             Err(EvalError::UnknownFunction(_))
         ));
+    }
+
+    // === Variable tests ===
+
+    #[test]
+    fn eval_variable() {
+        let mut ctx = EvalContext::new();
+        ctx.variables
+            .insert("my_var".to_string(), Literal::Integer(42));
+        assert_eq!(eval_with_ctx("@my_var", &ctx), Literal::Integer(42));
+    }
+
+    #[test]
+    fn eval_variable_string() {
+        let mut ctx = EvalContext::new();
+        ctx.variables.insert(
+            "greeting".to_string(),
+            Literal::Str("hello".to_string()),
+        );
+        assert_eq!(
+            eval_with_ctx("@greeting", &ctx),
+            Literal::Str("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_unknown_variable_error() {
+        let expr = parse("@missing").unwrap();
+        assert!(matches!(
+            evaluate(&expr, &EvalContext::new()),
+            Err(EvalError::UnknownVariable(name)) if name == "missing"
+        ));
+    }
+
+    #[test]
+    fn eval_variable_in_expression() {
+        let mut ctx = EvalContext::new();
+        ctx.variables
+            .insert("x".to_string(), Literal::Integer(10));
+        assert_eq!(eval_with_ctx("@x + 5", &ctx), Literal::Integer(15));
+    }
+
+    // === Dollar variable tests ===
+
+    #[test]
+    fn eval_dollar_geometry() {
+        let ctx = EvalContext::new()
+            .with_geometry(Literal::Str("POINT(1 2)".to_string()));
+        assert_eq!(
+            eval_with_ctx("$geometry", &ctx),
+            Literal::Str("POINT(1 2)".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_dollar_geometry_no_geometry_error() {
+        let expr = parse("$geometry").unwrap();
+        assert!(matches!(
+            evaluate(&expr, &EvalContext::new()),
+            Err(EvalError::NoGeometry)
+        ));
+    }
+
+    #[test]
+    fn eval_dollar_area() {
+        let ctx = EvalContext::new()
+            .with_geometry(Literal::Str("POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))".to_string()));
+        // For now, $area returns the geometry as a placeholder
+        let result = eval_with_ctx("$area", &ctx);
+        assert!(matches!(result, Literal::Str(_)));
+    }
+
+    #[test]
+    fn eval_dollar_length() {
+        let ctx = EvalContext::new()
+            .with_geometry(Literal::Str("LINESTRING(0 0, 1 1)".to_string()));
+        let result = eval_with_ctx("$length", &ctx);
+        assert!(matches!(result, Literal::Str(_)));
+    }
+
+    #[test]
+    fn eval_dollar_x() {
+        let ctx = EvalContext::new()
+            .with_geometry(Literal::Str("POINT(1 2)".to_string()));
+        let result = eval_with_ctx("$x", &ctx);
+        assert!(matches!(result, Literal::Str(_)));
+    }
+
+    #[test]
+    fn eval_dollar_y() {
+        let ctx = EvalContext::new()
+            .with_geometry(Literal::Str("POINT(1 2)".to_string()));
+        let result = eval_with_ctx("$y", &ctx);
+        assert!(matches!(result, Literal::Str(_)));
+    }
+
+    #[test]
+    fn eval_dollar_currentgeometry() {
+        let ctx = EvalContext::new()
+            .with_geometry(Literal::Str("POINT(5 10)".to_string()));
+        assert_eq!(
+            eval_with_ctx("$currentgeometry", &ctx),
+            Literal::Str("POINT(5 10)".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_dollar_currentfeature() {
+        let mut attrs = HashMap::new();
+        attrs.insert("name".to_string(), Literal::Str("test".to_string()));
+        let feature = FeatureRef {
+            id: 42,
+            attributes: attrs,
+        };
+        let ctx = EvalContext::new().with_feature(feature);
+        assert_eq!(
+            eval_with_ctx("$currentfeature", &ctx),
+            Literal::Integer(42)
+        );
+    }
+
+    #[test]
+    fn eval_dollar_unknown_variable() {
+        let expr = parse("$nonexistent").unwrap();
+        assert!(matches!(
+            evaluate(&expr, &EvalContext::new()),
+            Err(EvalError::UnknownVariable(name)) if name == "nonexistent"
+        ));
+    }
+
+    #[test]
+    fn eval_dollar_area_no_geometry_error() {
+        let expr = parse("$area").unwrap();
+        assert!(matches!(
+            evaluate(&expr, &EvalContext::new()),
+            Err(EvalError::NoGeometry)
+        ));
+    }
+
+    // === Feature scope tests ===
+
+    #[test]
+    fn eval_feature_in_context() {
+        let mut attrs = HashMap::new();
+        attrs.insert("population".to_string(), Literal::Integer(1000));
+        let feature = FeatureRef {
+            id: 1,
+            attributes: attrs,
+        };
+        let ctx = EvalContext::new()
+            .with_feature(feature)
+            .with_geometry(Literal::Str("POINT(0 0)".to_string()));
+        // Feature scope: fields and geometry are accessible
+        assert_eq!(
+            eval_with_ctx("$geometry", &ctx),
+            Literal::Str("POINT(0 0)".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_variable_and_field_together() {
+        let mut ctx = EvalContext::new();
+        ctx.fields
+            .insert("name".to_string(), Literal::Str("Alice".to_string()));
+        ctx.variables
+            .insert("greeting".to_string(), Literal::Str("Hello".to_string()));
+        let result = eval_with_ctx("@greeting || ' ' || \"name\"", &ctx);
+        assert_eq!(
+            result,
+            Literal::Str("Hello Alice".to_string())
+        );
+    }
+
+    #[test]
+    fn eval_context_from_hashmap() {
+        let mut fields = HashMap::new();
+        fields.insert("x".to_string(), Literal::Integer(5));
+        let ctx = EvalContext::from(fields);
+        assert_eq!(eval_with_ctx("\"x\" + 1", &ctx), Literal::Integer(6));
     }
 }

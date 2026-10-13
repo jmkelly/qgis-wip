@@ -406,6 +406,16 @@ impl Parser {
                 self.advance();
                 Ok(Expr::FieldRef(val))
             }
+            Some(Token::Variable(name)) => {
+                let val = name.clone();
+                self.advance();
+                Ok(Expr::Variable(val))
+            }
+            Some(Token::DollarVar(name)) => {
+                let val = name.clone();
+                self.advance();
+                Ok(Expr::DollarVar(val))
+            }
             Some(Token::Keyword(Keyword::True)) => {
                 self.advance();
                 Ok(Expr::Literal(Literal::Bool(true)))
@@ -1200,6 +1210,82 @@ mod tests {
     fn parse_bare_identifier_as_field() {
         let expr = parse_str("my_field");
         assert_eq!(expr, Expr::FieldRef("my_field".to_string()));
+    }
+
+    // === Variable tests ===
+
+    #[test]
+    fn parse_variable_at() {
+        let expr = parse_str("@my_var");
+        assert_eq!(expr, Expr::Variable("my_var".to_string()));
+    }
+
+    #[test]
+    fn parse_variable_dollar() {
+        let expr = parse_str("$geometry");
+        assert_eq!(expr, Expr::DollarVar("geometry".to_string()));
+    }
+
+    #[test]
+    fn parse_variable_dollar_area() {
+        let expr = parse_str("$area");
+        assert_eq!(expr, Expr::DollarVar("area".to_string()));
+    }
+
+    #[test]
+    fn parse_variable_dollar_length() {
+        let expr = parse_str("$length");
+        assert_eq!(expr, Expr::DollarVar("length".to_string()));
+    }
+
+    #[test]
+    fn parse_variable_at_in_expression() {
+        let expr = parse_str("@var + 1");
+        assert_eq!(
+            expr,
+            Expr::Binary(
+                BinaryOp::Add,
+                Box::new(Expr::Variable("var".to_string())),
+                Box::new(Expr::Literal(Literal::Integer(1))),
+            )
+        );
+    }
+
+    #[test]
+    fn parse_dollar_in_comparison() {
+        let expr = parse_str("$geometry IS NOT NULL");
+        assert_eq!(
+            expr,
+            Expr::Is {
+                left: Box::new(Expr::DollarVar("geometry".to_string())),
+                negated: true,
+                right: IsTarget::Null,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_variable_at_with_underscore() {
+        let expr = parse_str("@_private");
+        assert_eq!(expr, Expr::Variable("_private".to_string()));
+    }
+
+    #[test]
+    fn parse_variable_at_with_digits() {
+        let expr = parse_str("@var123");
+        assert_eq!(expr, Expr::Variable("var123".to_string()));
+    }
+
+    #[test]
+    fn parse_error_at_no_ident() {
+        let result = parse("@");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_error_dollar_no_ident() {
+        let result = parse("$");
+        assert!(result.is_err());
     }
 
     #[test]
