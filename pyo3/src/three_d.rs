@@ -637,11 +637,10 @@ impl PyQgs3DMapScene {
         if let Some(settings) = settings {
             // QGIS seeds a scene from its settings' origin; fall back to the
             // default origin when the caller passes something without one.
-            if let Ok((x, y, z)) = settings
-                .getattr(py, "origin")
-                .and_then(|origin| origin.extract::<(f64, f64, f64)>(py))
-            {
-                scene.set_origin(Point3D::new(x, y, z).unwrap_or_default());
+            if let Ok(origin) = settings.call_method0(py, "origin") {
+                if let Ok((x, y, z)) = origin.extract::<(f64, f64, f64)>(py) {
+                    scene.set_origin(Point3D::new(x, y, z).unwrap_or_default());
+                }
             }
         }
         Self(scene)

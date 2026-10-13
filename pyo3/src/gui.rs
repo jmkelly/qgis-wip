@@ -313,6 +313,7 @@ impl MapCanvas {
     pub fn refresh(&mut self) {
         self.render_requests = self.render_requests.wrapping_add(1);
         self.drawing = true;
+        self.rendering_complete = false;
     }
 
     /// Number of repaint requests issued so far.
