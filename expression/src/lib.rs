@@ -16,7 +16,7 @@ pub use ast::{
 };
 pub use errors::ExpressionError;
 pub use eval::{evaluate, Context, EvalContext, EvalError, FeatureRef};
-pub use lexer::{Keyword, LexError, Op, Token, lex};
+pub use lexer::{Keyword, LexError, Op, Span, SpannedToken, Token, lex, lex_spanned};
 pub use parser::{ParseError, parse};
 
 use std::collections::HashMap;

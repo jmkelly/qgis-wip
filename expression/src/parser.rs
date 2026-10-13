@@ -27,18 +27,21 @@
 //! ```
 
 use crate::ast::*;
-use crate::lexer::{Keyword, Op, Token};
+use crate::lexer::{Keyword, Op, Span, SpannedToken, Token};
 
 /// Parsing error.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseError {
     pub message: String,
+    /// Token index where parsing stopped (kept for compatibility).
     pub position: usize,
+    /// UTF-8 byte range in the expression source.
+    pub span: Span,
 }
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "parse error: {}", self.message)
+        write!(f, "parse error at bytes {}..{}: {}", self.span.start, self.span.end, self.message)
     }
 }
 
@@ -46,36 +49,42 @@ impl std::error::Error for ParseError {}
 
 /// Parse an expression string into an AST.
 pub fn parse(input: &str) -> Result<Expr, ParseError> {
-    let tokens = crate::lexer::lex(input).map_err(|e| ParseError {
+    let tokens = crate::lexer::lex_spanned(input).map_err(|e| ParseError {
         message: e.message,
         position: e.position,
+        span: e.span,
     })?;
-    let mut parser = Parser::new(tokens);
+    let mut parser = Parser::new(tokens, input.len());
     let expr = parser.parse_expression()?;
     parser.expect_end()?;
     Ok(expr)
 }
 
 struct Parser {
-    tokens: Vec<Token>,
+    tokens: Vec<SpannedToken>,
     pos: usize,
+    source_len: usize,
 }
 
 impl Parser {
-    fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, pos: 0 }
+    fn new(tokens: Vec<SpannedToken>, source_len: usize) -> Self {
+        Parser {
+            tokens,
+            pos: 0,
+            source_len,
+        }
     }
 
     fn peek(&self) -> Option<&Token> {
-        self.tokens.get(self.pos)
+        self.tokens.get(self.pos).map(|token| &token.token)
     }
 
     fn peek_at(&self, offset: usize) -> Option<&Token> {
-        self.tokens.get(self.pos + offset)
+        self.tokens.get(self.pos + offset).map(|token| &token.token)
     }
 
     fn advance(&mut self) -> Option<Token> {
-        let tok = self.tokens.get(self.pos).cloned();
+        let tok = self.tokens.get(self.pos).map(|token| token.token.clone());
         if tok.is_some() {
             self.pos += 1;
         }
@@ -85,8 +94,9 @@ impl Parser {
     fn expect_end(&self) -> Result<(), ParseError> {
         if self.pos < self.tokens.len() {
             return Err(ParseError {
-                message: format!("unexpected token {:?}", self.tokens[self.pos]),
+                message: format!("unexpected token {:?}", self.tokens[self.pos].token),
                 position: self.pos,
+                span: self.tokens[self.pos].span,
             });
         }
         Ok(())
@@ -96,6 +106,11 @@ impl Parser {
         ParseError {
             message: msg.into(),
             position: self.pos,
+            span: self
+                .tokens
+                .get(self.pos)
+                .map(|token| token.span)
+                .unwrap_or_else(|| Span::new(self.source_len, self.source_len)),
         }
     }
 
@@ -1309,5 +1324,24 @@ mod tests {
                 ],
             )
         );
+    }
+
+    #[test]
+    fn parse_error_points_at_unexpected_token() {
+        let error = parse("1 2").unwrap_err();
+        assert_eq!(error.span, Span::new(2, 3));
+        assert!(error.to_string().contains("bytes 2..3"));
+    }
+
+    #[test]
+    fn parse_error_at_eof_has_empty_span_at_source_end() {
+        let error = parse("(1 + 2").unwrap_err();
+        assert_eq!(error.span, Span::new(6, 6));
+    }
+
+    #[test]
+    fn parse_error_preserves_lexer_span() {
+        let error = parse("é @").unwrap_err();
+        assert_eq!(error.span, Span::new(3, 4));
     }
 }

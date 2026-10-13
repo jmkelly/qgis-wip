@@ -29,6 +29,29 @@ pub enum Token {
     Op(Op),
 }
 
+/// A byte range in the original expression source (`start..end`).
+///
+/// Offsets are UTF-8 byte offsets so they can be used directly to slice the
+/// source string or pass to editor diagnostics.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Span {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Span {
+    pub const fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
+}
+
+/// A token paired with its range in the source expression.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpannedToken {
+    pub token: Token,
+    pub span: Span,
+}
+
 /// Keywords recognized by the expression lexer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Keyword {
@@ -77,12 +100,14 @@ pub enum Op {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LexError {
     pub message: String,
+    /// UTF-8 byte offset of the first character involved (kept for compatibility).
     pub position: usize,
+    pub span: Span,
 }
 
 impl std::fmt::Display for LexError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "lex error at position {}: {}", self.position, self.message)
+        write!(f, "lex error at bytes {}..{}: {}", self.span.start, self.span.end, self.message)
     }
 }
 
@@ -90,12 +115,19 @@ impl std::error::Error for LexError {}
 
 /// Tokenize an expression string.
 pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
+    Ok(lex_spanned(input)?.into_iter().map(|token| token.token).collect())
+}
+
+/// Tokenize an expression string while preserving each token's UTF-8 byte span.
+pub fn lex_spanned(input: &str) -> Result<Vec<SpannedToken>, LexError> {
     let chars: Vec<char> = input.chars().collect();
+    let byte_offsets = char_byte_offsets(&chars);
     let mut tokens = Vec::new();
     let mut i = 0;
 
     while i < chars.len() {
         let c = chars[i];
+        let token_start = i;
 
         // Skip whitespace
         if c.is_whitespace() {
@@ -114,7 +146,10 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
         // Numbers
         if c.is_ascii_digit() || (c == '.' && i + 1 < chars.len() && chars[i + 1].is_ascii_digit()) {
             let (tok, next) = lex_number(&chars, i)?;
-            tokens.push(tok);
+            tokens.push(SpannedToken {
+                token: tok,
+                span: Span::new(byte_offsets[token_start], byte_offsets[next]),
+            });
             i = next;
             continue;
         }
@@ -122,7 +157,10 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
         // String literals (single-quoted) and column refs (double-quoted)
         if c == '\'' {
             let (tok, next) = lex_string(&chars, i, c)?;
-            tokens.push(tok);
+            tokens.push(SpannedToken {
+                token: tok,
+                span: Span::new(byte_offsets[token_start], byte_offsets[next]),
+            });
             i = next;
             continue;
         }
@@ -130,7 +168,10 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
             let (tok, next) = lex_string(&chars, i, c)?;
             // Double-quoted identifiers are column references in QGIS
             if let Token::Str(s) = tok {
-                tokens.push(Token::ColumnRef(s));
+                tokens.push(SpannedToken {
+                    token: Token::ColumnRef(s),
+                    span: Span::new(byte_offsets[token_start], byte_offsets[next]),
+                });
             }
             i = next;
             continue;
@@ -139,7 +180,10 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
         // Bracketed column reference
         if c == '[' {
             let (tok, next) = lex_bracket_ref(&chars, i)?;
-            tokens.push(tok);
+            tokens.push(SpannedToken {
+                token: tok,
+                span: Span::new(byte_offsets[token_start], byte_offsets[next]),
+            });
             i = next;
             continue;
         }
@@ -147,7 +191,10 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
         // Variable reference (@variable)
         if c == '@' {
             let (tok, next) = lex_variable(&chars, i, '@')?;
-            tokens.push(tok);
+            tokens.push(SpannedToken {
+                token: tok,
+                span: Span::new(byte_offsets[token_start], byte_offsets[next]),
+            });
             i = next;
             continue;
         }
@@ -155,14 +202,20 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
         // Dollar-prefixed variable ($geometry, $area, etc.)
         if c == '$' {
             let (tok, next) = lex_variable(&chars, i, '$')?;
-            tokens.push(tok);
+            tokens.push(SpannedToken {
+                token: tok,
+                span: Span::new(byte_offsets[token_start], byte_offsets[next]),
+            });
             i = next;
             continue;
         }
 
         // Operators and punctuation
         if let Some((op, next)) = lex_operator(&chars, i) {
-            tokens.push(Token::Op(op));
+            tokens.push(SpannedToken {
+                token: Token::Op(op),
+                span: Span::new(byte_offsets[token_start], byte_offsets[next]),
+            });
             i = next;
             continue;
         }
@@ -170,18 +223,43 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
         // Identifiers and keywords
         if c.is_alphabetic() || c == '_' {
             let (tok, next) = lex_ident(&chars, i);
-            tokens.push(tok);
+            tokens.push(SpannedToken {
+                token: tok,
+                span: Span::new(byte_offsets[token_start], byte_offsets[next]),
+            });
             i = next;
             continue;
         }
 
         return Err(LexError {
             message: format!("unexpected character '{}'", c),
-            position: i,
+            position: byte_offsets[i],
+            span: Span::new(byte_offsets[i], byte_offsets[i + 1]),
         });
     }
 
     Ok(tokens)
+}
+
+fn char_byte_offsets(chars: &[char]) -> Vec<usize> {
+    let mut offsets = Vec::with_capacity(chars.len() + 1);
+    let mut byte = 0;
+    for c in chars {
+        offsets.push(byte);
+        byte += c.len_utf8();
+    }
+    offsets.push(byte);
+    offsets
+}
+
+fn lex_error(chars: &[char], message: String, start: usize, end: usize) -> LexError {
+    let offsets = char_byte_offsets(chars);
+    let span = Span::new(offsets[start], offsets[end]);
+    LexError {
+        message,
+        position: span.start,
+        span,
+    }
 }
 
 fn lex_number(chars: &[char], start: usize) -> Result<(Token, usize), LexError> {
@@ -209,15 +287,13 @@ fn lex_number(chars: &[char], start: usize) -> Result<(Token, usize), LexError> 
 
     let text: String = chars[start..i].iter().collect();
     if has_dot || has_exp {
-        let val: f64 = text.parse().map_err(|_| LexError {
-            message: format!("invalid float literal '{}'", text),
-            position: start,
+        let val: f64 = text.parse().map_err(|_| {
+            lex_error(chars, format!("invalid float literal '{}'", text), start, i)
         })?;
         Ok((Token::Float(val), i))
     } else {
-        let val: i64 = text.parse().map_err(|_| LexError {
-            message: format!("invalid integer literal '{}'", text),
-            position: start,
+        let val: i64 = text.parse().map_err(|_| {
+            lex_error(chars, format!("invalid integer literal '{}'", text), start, i)
         })?;
         Ok((Token::Integer(val), i))
     }
@@ -259,10 +335,12 @@ fn lex_string(chars: &[char], start: usize, quote: char) -> Result<(Token, usize
         i += 1;
     }
 
-    Err(LexError {
-        message: "unterminated string literal".to_string(),
-        position: start,
-    })
+    Err(lex_error(
+        chars,
+        "unterminated string literal".to_string(),
+        start,
+        chars.len(),
+    ))
 }
 
 fn lex_bracket_ref(chars: &[char], start: usize) -> Result<(Token, usize), LexError> {
@@ -278,10 +356,12 @@ fn lex_bracket_ref(chars: &[char], start: usize) -> Result<(Token, usize), LexEr
         i += 1;
     }
 
-    Err(LexError {
-        message: "unterminated bracket reference".to_string(),
-        position: start,
-    })
+    Err(lex_error(
+        chars,
+        "unterminated bracket reference".to_string(),
+        start,
+        chars.len(),
+    ))
 }
 
 fn lex_variable(chars: &[char], start: usize, prefix: char) -> Result<(Token, usize), LexError> {
@@ -291,10 +371,12 @@ fn lex_variable(chars: &[char], start: usize, prefix: char) -> Result<(Token, us
     }
     let text: String = chars[start + 1..i].iter().collect();
     if text.is_empty() {
-        return Err(LexError {
-            message: format!("expected identifier after '{}'", prefix),
-            position: start,
-        });
+        return Err(lex_error(
+            chars,
+            format!("expected identifier after '{}'", prefix),
+            start,
+            i,
+        ));
     }
     let tok = if prefix == '@' {
         Token::Variable(text)
@@ -636,5 +718,27 @@ mod tests {
     fn lex_whitespace_only() {
         let toks = lex("   \t\n  ").unwrap();
         assert!(toks.is_empty());
+    }
+
+    #[test]
+    fn lex_spanned_tokens_use_utf8_byte_offsets() {
+        let tokens = lex_spanned("é + 2").unwrap();
+        assert_eq!(tokens[0].span, Span::new(0, 2));
+        assert_eq!(tokens[1].span, Span::new(3, 4));
+        assert_eq!(tokens[2].span, Span::new(5, 6));
+    }
+
+    #[test]
+    fn lex_errors_include_utf8_byte_span() {
+        let error = lex("é @").unwrap_err();
+        assert_eq!(error.position, 3);
+        assert_eq!(error.span, Span::new(3, 4));
+        assert!(error.to_string().contains("bytes 3..4"));
+    }
+
+    #[test]
+    fn unterminated_string_error_spans_to_end_of_source() {
+        let error = lex("'abc").unwrap_err();
+        assert_eq!(error.span, Span::new(0, 4));
     }
 }

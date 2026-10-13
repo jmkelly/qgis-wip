@@ -6,6 +6,7 @@ license.workspace = true
 description = "Criterion benchmarks for QGIS Rust port hot paths (from tests/bench/qgsbench)"
 
 [dependencies]
+qgis-expression = { path = "../expression" }
 
 [dev-dependencies]
 criterion = { workspace = true }

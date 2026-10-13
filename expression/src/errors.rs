@@ -1,14 +1,11 @@
 //! Unified error type for the expression engine.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-
-use crate::{ast::Expr, eval::EvalError, lexer::LexError, parser::ParseError};
+use crate::{eval::EvalError, lexer::{LexError, Span}, parser::ParseError};
 
 /// Unified error type for expression parsing and evaluation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExpressionError {
-    ParseError(String),
+    ParseError { message: String, span: Span },
     TypeError(String),
     DivisionByZero,
     InvalidArgument(String),
@@ -19,7 +16,11 @@ pub enum ExpressionError {
 impl std::fmt::Display for ExpressionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ExpressionError::ParseError(msg) => write!(f, "Parse Error: {}", msg),
+            ExpressionError::ParseError { message, span } => write!(
+                f,
+                "Parse Error at bytes {}..{}: {}",
+                span.start, span.end, message
+            ),
             ExpressionError::TypeError(msg) => write!(f, "Type Error: {}", msg),
             ExpressionError::DivisionByZero => write!(f, "Division by zero"),
             ExpressionError::InvalidArgument(msg) => write!(f, "Invalid argument: {}", msg),
@@ -35,13 +36,19 @@ impl std::error::Error for ExpressionError {}
 
 impl From<ParseError> for ExpressionError {
     fn from(err: ParseError) -> Self {
-        ExpressionError::ParseError(err.message)
+        ExpressionError::ParseError {
+            message: err.message,
+            span: err.span,
+        }
     }
 }
 
 impl From<LexError> for ExpressionError {
     fn from(err: LexError) -> Self {
-        ExpressionError::ParseError(err.message)
+        ExpressionError::ParseError {
+            message: err.message,
+            span: err.span,
+        }
     }
 }
 
