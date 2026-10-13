@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod attribute_table;
+pub mod print_layout;
 
 /// Application state for the main window.
 #[derive(Debug, Default)]
