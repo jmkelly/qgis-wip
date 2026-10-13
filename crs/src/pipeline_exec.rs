@@ -1,8 +1,9 @@
 //! PROJ pipeline executor.
 //!
 //! Executes parsed pipeline steps (see [`crate::pipeline`]) on 4D coordinates.
-//! Supports: unitconvert, cart, push/pop, helmert, axisswap, noop, and
-//! nested pipelines. Projection steps return an error (see ADR 0006).
+//! Supports: unitconvert, cart, push/pop, helmert, axisswap, noop, nested
+//! pipelines, and the gap-built projection methods (ortho, qsc, geocent).
+//! Other projection steps return an error (see ADR 0006).
 //!
 //! Pure Rust, zero unsafe, zero dependencies.
 
@@ -30,6 +31,9 @@ pub enum PipelineError {
 
     /// An unknown ellipsoid was specified for cart.
     UnknownEllipsoid(String),
+
+    /// A gap-built projection step failed (bad ellipsoid, domain error, etc.).
+    InvalidProjection(String),
 
     /// A pop was attempted with an empty stack.
     EmptyStack,
@@ -63,6 +67,9 @@ impl std::fmt::Display for PipelineError {
             Self::UnknownEllipsoid(ellps) => {
                 write!(f, "unknown ellipsoid: {ellps:?}")
             }
+            Self::InvalidProjection(reason) => {
+                write!(f, "projection step failed: {reason}")
+            }
             Self::EmptyStack => write!(f, "pop with empty stack"),
             Self::InvalidAxis(axis) => write!(f, "invalid axis index: {axis}"),
         }
@@ -70,6 +77,12 @@ impl std::fmt::Display for PipelineError {
 }
 
 impl std::error::Error for PipelineError {}
+
+impl From<crate::projection::ProjectionError> for PipelineError {
+    fn from(e: crate::projection::ProjectionError) -> Self {
+        Self::InvalidProjection(e.to_string())
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Ellipsoid parameters
@@ -216,7 +229,73 @@ fn execute_step(
         Step::AxisSwap { order } => execute_axisswap(order, coord),
         Step::NoOp => Ok(coord),
         Step::Pipeline(nested) => execute_steps(&nested.steps, coord.0, coord.1, coord.2, coord.3, stack),
-        Step::Projection { method, .. } => Err(PipelineError::UnsupportedMethod(method.clone())),
+        Step::Projection {
+            method,
+            params,
+            inverse,
+        } => execute_projection(method, params, *inverse, coord),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Projection steps (gap-built methods: ortho, qsc, geocent)
+// ---------------------------------------------------------------------------
+
+/// Executes a projection step for the gap-built methods (ortho, qsc, geocent).
+///
+/// These are the `+proj` methods that proj4rs lacks (ADR 0006). The native
+/// implementations in [`crate::projection`] handle them directly.
+///
+/// - `ortho` / `qsc`: 2D projection; `(lam, phi)` ↔ dimensionless `(x, y)`.
+///   The `z` (height) and `t` (time) components pass through unchanged.
+/// - `geocent`: 3D conversion; `(lam, phi, h)` ↔ `(X, Y, Z)` in meters.
+fn execute_projection(
+    method: &str,
+    params: &[(String, String)],
+    inverse: bool,
+    coord: Coord,
+) -> Result<Coord, PipelineError> {
+    use crate::projection::{Ellipsoid, Projection, ProjectionParams, ProjParams};
+
+    // Build a ProjParams from the parsed key/value pairs
+    let mut pp = ProjParams::default();
+    for (key, value) in params {
+        pp.push(key.clone(), Some(value.clone()));
+    }
+
+    let (x, y, z, t) = coord;
+
+    match method {
+        "ortho" | "qsc" => {
+            let ellps = Ellipsoid::from_proj_params(&pp)
+                .map_err(|e| PipelineError::InvalidProjection(e.to_string()))?;
+            let proj_params = ProjectionParams::from_proj_params(&pp);
+            let projection = if method == "ortho" {
+                Projection::Orthographic(crate::projection::Orthographic::new(ellps, proj_params))
+            } else {
+                Projection::Qsc(crate::projection::Qsc::new(ellps, proj_params))
+            };
+            if inverse {
+                let (lam, phi, _) = projection.inverse(x, y, z)?;
+                Ok((lam, phi, z, t))
+            } else {
+                let (px, py, pz) = projection.forward(x, y, z)?;
+                Ok((px, py, pz, t))
+            }
+        }
+        "geocent" => {
+            let ellps = Ellipsoid::from_proj_params(&pp)
+                .map_err(|e| PipelineError::InvalidProjection(e.to_string()))?;
+            let g = crate::projection::Geocent::new(ellps);
+            if inverse {
+                let (lam, phi, h) = g.inverse(x, y, z)?;
+                Ok((lam, phi, h, t))
+            } else {
+                let (xx, yy, zz) = g.forward(x, y, z);
+                Ok((xx, yy, zz, t))
+            }
+        }
+        other => Err(PipelineError::UnsupportedMethod(other.to_string())),
     }
 }
 

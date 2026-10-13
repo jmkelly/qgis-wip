@@ -3,18 +3,35 @@
 //! proj4rs uses radians internally. This module wraps `Proj::from_proj_string`
 //! and `proj4rs::transform::transform` so that all public APIs accept and return
 //! degrees. The conversion happens at the boundary and never leaks.
+//!
+//! Projection methods that proj4rs lacks (ortho, qsc — see ADR 0006) are
+//! routed to the native implementations in [`crate::projection`]. Geocent
+//! stays on proj4rs, whose transform layer already performs the full
+//! geodetic↔geocentric conversion.
 
 #![forbid(unsafe_code)]
 
 use std::f64::consts::PI;
 
+use crate::projection::{Projection, ProjectionError};
+
 /// A coordinate reference system transform.
 ///
-/// Wraps a proj4rs `Proj` and provides degrees-in / degrees-out transformation.
-/// Internally proj4rs works in radians; we convert at the boundary.
+/// Wraps a proj4rs `Proj` (or a native gap-built [`Projection`]) and provides
+/// degrees-in / degrees-out transformation. Internally proj4rs works in
+/// radians; we convert at the boundary.
 #[derive(Debug, Clone)]
 pub struct CrsTransform {
-    inner: proj4rs::Proj,
+    inner: InnerTransform,
+}
+
+/// The underlying transform backend.
+#[derive(Debug, Clone)]
+enum InnerTransform {
+    /// A proj4rs projection.
+    Proj4rs(proj4rs::Proj),
+    /// A native gap-built projection (ortho, qsc).
+    Native(Projection),
 }
 
 /// Errors that can occur during CRS transformation.
@@ -40,6 +57,14 @@ impl std::fmt::Display for TransformError {
 
 impl std::error::Error for TransformError {}
 
+impl From<ProjectionError> for TransformError {
+    fn from(e: ProjectionError) -> Self {
+        Self::TransformFailed {
+            reason: e.to_string(),
+        }
+    }
+}
+
 impl CrsTransform {
     /// Creates a new CRS transform from a proj string.
     ///
@@ -51,9 +76,23 @@ impl CrsTransform {
     ///
     /// Returns [`TransformError::InvalidProjString`] if the string cannot be parsed.
     pub fn from_proj_string(proj_string: &str) -> Result<Self, TransformError> {
+        // Route gap-built methods to the native implementations
+        let params = crate::projection::ProjParams::parse(proj_string);
+        match params.get_str("proj") {
+            Some("ortho") | Some("qsc") => {
+                let inner = Projection::from_proj_string(proj_string)
+                    .map(InnerTransform::Native)
+                    .map_err(|e| TransformError::InvalidProjString(e.to_string()))?;
+                return Ok(Self { inner });
+            }
+            _ => {}
+        }
+
         let inner = proj4rs::Proj::from_proj_string(proj_string)
             .map_err(|e| TransformError::InvalidProjString(e.to_string()))?;
-        Ok(Self { inner })
+        Ok(Self {
+            inner: InnerTransform::Proj4rs(inner),
+        })
     }
 
     /// Creates a new CRS transform from an EPSG code.
@@ -76,6 +115,14 @@ impl CrsTransform {
         Self::from_proj_string(&proj_string)
     }
 
+    /// Returns the projection method name, if known.
+    pub fn projname(&self) -> String {
+        match &self.inner {
+            InnerTransform::Proj4rs(p) => p.projname().to_string(),
+            InnerTransform::Native(p) => p.name().to_string(),
+        }
+    }
+
     /// Transforms a point from this CRS to another CRS.
     ///
     /// # Arguments
@@ -93,19 +140,53 @@ impl CrsTransform {
         y: f64,
         target: &CrsTransform,
     ) -> Result<(f64, f64), TransformError> {
-        // Convert degrees to radians for proj4rs
-        let mut point = (x.to_radians(), y.to_radians());
+        use InnerTransform::*;
 
-        proj4rs::transform::transform(
-            &self.inner,
-            &target.inner,
-            &mut point,
-        ).map_err(|e| TransformError::TransformFailed {
-            reason: e.to_string(),
-        })?;
+        match (&self.inner, &target.inner) {
+            (Proj4rs(src), Proj4rs(dst)) => {
+                // Convert degrees to radians for proj4rs
+                let mut point = (x.to_radians(), y.to_radians());
 
-        // Convert radians back to degrees
-        Ok((point.0.to_degrees(), point.1.to_degrees()))
+                proj4rs::transform::transform(src, dst, &mut point).map_err(|e| {
+                    TransformError::TransformFailed {
+                        reason: e.to_string(),
+                    }
+                })?;
+
+                // Convert radians back to degrees
+                Ok((point.0.to_degrees(), point.1.to_degrees()))
+            }
+            (Native(src), Native(dst)) => {
+                // Both sides native: inverse-project source, forward-project target
+                let (lam, phi, _) = src.inverse(x.to_radians(), y.to_radians(), 0.0)?;
+                let (xr, yr, _) = dst.forward(lam, phi, 0.0)?;
+                Ok((xr.to_degrees(), yr.to_degrees()))
+            }
+            (Native(src), Proj4rs(dst)) => {
+                // Native source → geographic (radians) → proj4rs target
+                let (lam, phi, _) = src.inverse(x.to_radians(), y.to_radians(), 0.0)?;
+                let latlong = latlong_wgs84();
+                let mut point = (lam, phi, 0.0);
+                proj4rs::transform::transform(&latlong, dst, &mut point).map_err(|e| {
+                    TransformError::TransformFailed {
+                        reason: e.to_string(),
+                    }
+                })?;
+                Ok((point.0.to_degrees(), point.1.to_degrees()))
+            }
+            (Proj4rs(src), Native(dst)) => {
+                // proj4rs source → geographic (radians) → native target
+                let latlong = latlong_wgs84();
+                let mut point = (x.to_radians(), y.to_radians(), 0.0);
+                proj4rs::transform::transform(src, &latlong, &mut point).map_err(|e| {
+                    TransformError::TransformFailed {
+                        reason: e.to_string(),
+                    }
+                })?;
+                let (xr, yr, _) = dst.forward(point.0, point.1, 0.0)?;
+                Ok((xr.to_degrees(), yr.to_degrees()))
+            }
+        }
     }
 
     /// Transforms a point in-place from this CRS to another CRS.
@@ -120,6 +201,13 @@ impl CrsTransform {
         *point = (x, y);
         Ok(())
     }
+}
+
+/// A WGS 84 latlong `Proj` used as the geographic intermediate when mixing
+/// proj4rs and native projections.
+fn latlong_wgs84() -> proj4rs::Proj {
+    proj4rs::Proj::from_proj_string("+proj=longlat +ellps=WGS84")
+        .expect("WGS84 latlong proj string is valid")
 }
 
 #[cfg(test)]
@@ -227,5 +315,77 @@ mod tests {
         web_merc.transform_point_mut(&mut recovered, &wgs84).unwrap();
         assert!((recovered.0 - original.0).abs() < 1e-6);
         assert!((recovered.1 - original.1).abs() < 1e-6);
+    }
+
+    // -------------------------------------------------------------------
+    // Native projection integration (ADR 0006 gap build)
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn from_proj_string_ortho_parses() {
+        let t = CrsTransform::from_proj_string(
+            "+proj=ortho +lat_0=40 +lon_0=-100 +a=6378137 +rf=298.257223563",
+        );
+        assert!(t.is_ok(), "failed: {:?}", t.err());
+        assert_eq!(t.unwrap().projname(), "ortho");
+    }
+
+    #[test]
+    fn from_proj_string_qsc_parses() {
+        let t = CrsTransform::from_proj_string("+proj=qsc +lat_0=0 +lon_0=0 +ellps=WGS84");
+        assert!(t.is_ok(), "failed: {:?}", t.err());
+        assert_eq!(t.unwrap().projname(), "qsc");
+    }
+
+    #[test]
+    fn ortho_native_roundtrip_through_facade() {
+        let ortho = CrsTransform::from_proj_string(
+            "+proj=ortho +lat_0=0 +lon_0=0 +R=6370997",
+        )
+        .unwrap();
+        let mut point = (45.0, 30.0);
+        ortho.transform_point_mut(&mut point, &ortho).unwrap();
+        assert!((point.0 - 45.0).abs() < 1e-9, "x = {}", point.0);
+        assert!((point.1 - 30.0).abs() < 1e-9, "y = {}", point.1);
+    }
+
+    #[test]
+    fn qsc_native_roundtrip_through_facade() {
+        let qsc = CrsTransform::from_proj_string("+proj=qsc +lat_0=0 +lon_0=0 +ellps=WGS84")
+            .unwrap();
+        let mut point = (20.0, 10.0);
+        qsc.transform_point_mut(&mut point, &qsc).unwrap();
+        assert!((point.0 - 20.0).abs() < 1e-9, "x = {}", point.0);
+        assert!((point.1 - 10.0).abs() < 1e-9, "y = {}", point.1);
+    }
+
+    #[test]
+    fn ortho_to_wgs84_transform() {
+        // Transform from ortho (spherical, R=6370997) to WGS84 latlong.
+        // The ortho CRS is spherical so the ellipsoid differs from WGS84;
+        // the facade routes through a WGS84 latlong intermediate.
+        let ortho = CrsTransform::from_proj_string(
+            "+proj=ortho +lat_0=0 +lon_0=0 +R=6370997",
+        )
+        .unwrap();
+        let wgs84 = CrsTransform::from_epsg(4326).unwrap();
+        // Center of projection maps to (0, 0)
+        let mut point = (0.0, 0.0);
+        ortho.transform_point_mut(&mut point, &wgs84).unwrap();
+        assert!(point.0.abs() < 1e-6, "x = {}", point.0);
+        assert!(point.1.abs() < 1e-6, "y = {}", point.1);
+    }
+
+    #[test]
+    fn wgs84_to_ortho_transform() {
+        let wgs84 = CrsTransform::from_epsg(4326).unwrap();
+        let ortho = CrsTransform::from_proj_string(
+            "+proj=ortho +lat_0=0 +lon_0=0 +R=6370997",
+        )
+        .unwrap();
+        let mut point = (0.0, 0.0);
+        wgs84.transform_point_mut(&mut point, &ortho).unwrap();
+        assert!(point.0.abs() < 1e-6, "x = {}", point.0);
+        assert!(point.1.abs() < 1e-6, "y = {}", point.1);
     }
 }
