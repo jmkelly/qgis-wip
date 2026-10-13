@@ -325,26 +325,60 @@ impl GridCatalog {
     /// Returns the most specific (child) grid that contains the point,
     /// or `None` if no grid covers it.
     pub fn find_best(&self, lon: f64, lat: f64) -> Option<&Ntv2Grid> {
-        // First pass: find all root grids that contain the point
-        let mut best: Option<&Ntv2Grid> = None;
-        for grid in &self.grids {
-            if grid.is_root() && grid.contains(lon, lat) {
-                best = Some(grid);
-                break;
-            }
+        // Consider every grid that contains the point. The most specific
+        // grid is the one with the smallest area (child grids override
+        // their parents), which also handles deeply-nested (grandchild)
+        // hierarchies regardless of insertion order.
+        let mut candidates: Vec<&Ntv2Grid> = self
+            .grids
+            .iter()
+            .filter(|g| g.contains(lon, lat))
+            .collect();
+        if candidates.is_empty() {
+            return None;
         }
-
-        // Second pass: find child grids that contain the point
-        if let Some(root) = best {
-            let mut current = root;
-            for grid in &self.grids {
-                if grid.is_child_of(current) && grid.contains(lon, lat) {
-                    current = grid;
+        // Prefer lineage descendants when possible: walk the chain from a
+        // containing root through children. Fall back to smallest area.
+        // First try to follow the parent/child chain to the deepest level.
+        let mut best: Option<&Ntv2Grid> = None;
+        for grid in &candidates {
+            if grid.is_root() {
+                // candidate root; consider chain
+                let mut current = *grid;
+                loop {
+                    let next = candidates
+                        .iter()
+                        .copied()
+                        .find(|g| g.is_child_of(current) && g.contains(lon, lat));
+                    match next {
+                        Some(c) => current = c,
+                        None => break,
+                    }
+                }
+                // Pick the deepest chain; tie-break by smallest area
+                match best {
+                    None => best = Some(current),
+                    Some(b) => {
+                        let area_b = (b.ur.0 - b.ll.0).abs() * (b.ur.1 - b.ll.1).abs();
+                        let area_c = (current.ur.0 - current.ll.0).abs()
+                            * (current.ur.1 - current.ll.1).abs();
+                        if area_c < area_b {
+                            best = Some(current);
+                        }
+                    }
                 }
             }
-            best = Some(current);
         }
-
+        // If no root contained the point, fall back to smallest area.
+        if best.is_none() {
+            best = candidates
+                .into_iter()
+                .min_by(|a, b| {
+                    let aa = (a.ur.0 - a.ll.0).abs() * (a.ur.1 - a.ll.1).abs();
+                    let bb = (b.ur.0 - b.ll.0).abs() * (b.ur.1 - b.ll.1).abs();
+                    aa.partial_cmp(&bb).unwrap_or(std::cmp::Ordering::Equal)
+                });
+        }
         best
     }
 
