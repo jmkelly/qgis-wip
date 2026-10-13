@@ -33,6 +33,9 @@ impl Provider for PlaceholderProvider {
     }
 }
 
+pub mod dbase;
+pub mod shapefile;
+
 #[cfg(test)]
 mod tests {
     use super::*;
