@@ -47,7 +47,7 @@ fn configured_paths() -> Vec<PathBuf> {
 }
 
 fn deduplicate_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
-    let mut unique = Vec::new();
+    let mut unique: Vec<PathBuf> = Vec::new();
     for path in paths {
         if !unique.iter().any(|known| same_path(known, &path)) {
             unique.push(path);
