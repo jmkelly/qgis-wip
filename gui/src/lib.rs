@@ -5,6 +5,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod attribute_table;
+
 /// Application state for the main window.
 #[derive(Debug, Default)]
 pub struct AppState {
