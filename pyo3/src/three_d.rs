@@ -687,8 +687,18 @@ impl PyQgs3DMapScene {
         self.0.view_dir_x
     }
 
+    #[pyo3(name = "viewingDirection_x")]
+    fn viewing_direction_x_snake(&self) -> f64 {
+        self.0.view_dir_x
+    }
+
     #[pyo3(name = "viewingDirectionY")]
     fn viewing_direction_y(&self) -> f64 {
+        self.0.view_dir_y
+    }
+
+    #[pyo3(name = "viewingDirection_y")]
+    fn viewing_direction_y_snake(&self) -> f64 {
         self.0.view_dir_y
     }
 

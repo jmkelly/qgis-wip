@@ -285,3 +285,42 @@ assert QgsProcessingFeedback() is not None
     )
     .expect("qgis.processing must keep working");
 }
+
+
+
+#[test]
+fn debug_gui3() {
+    run(
+        r#"
+from qgis.gui import QgsMapCanvas
+canvas = QgsMapCanvas()
+canvas.addLayer("roads")
+print("remove true:", canvas.removeLayer("roads") is True)
+print("remove false:", canvas.removeLayer("roads") is False)
+"#,
+    )
+    .expect("debug gui3");
+}
+
+
+
+
+#[test]
+fn debug_3d_seq() {
+    run(
+        r#"
+from qgis._3d import Qgs3DMapScene, Qgs3DMapSettings
+settings = Qgs3DMapSettings()
+settings.setOrigin(1.0, 2.0, 3.0)
+settings.setCameraController("QgsTerrainCameraController")
+scene = Qgs3DMapScene(settings)
+print("origin", scene.origin())
+scene.setViewingDirection(0.0, -5.0, 0.0)
+print("vd", scene.viewingDirection())
+assert scene.viewingDirection() == (0.0, -5.0, 0.0)
+print("ok")
+"#,
+    )
+    .expect("debug 3d seq");
+}
+
