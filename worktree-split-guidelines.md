@@ -222,3 +222,87 @@ paseo_create_workspace(worktreeSlug=qgis-e9r.1)   # analysis
   implementer's scope small enough to hold in context.
 - **Prove it works** — per-worktree gates (test + clippy) prove each
   agent's work before merge, not after.
+
+## Review findings (bead qgis-pqg, 2026-10-14)
+
+Validated against `rust-port-agent-loop.md`, root `Cargo.toml`, and the
+current crate layout. Findings ordered by severity.
+
+### A. Contradictions with the agent loop (must resolve)
+
+**A1. §12 "Rebase before merge" contradicts agent loop §10.**
+The guidelines prescribe `git rebase master && git merge --ff-only`; the
+agent loop prescribes `git merge --no-ff <branch> -m "merge: <bead-id>"`.
+These are incompatible histories. Pick one. The agent loop's `--no-ff`
+approach preserves the association between a branch and its bead ID,
+which `git log --grep` and audit tooling depend on. **Proposed fix:** delete
+§12 and replace with a pointer to agent loop §10.
+
+**A2. §11 "Intermediate commits" conflicts with the implementer rule
+"No commits unless the orchestrator explicitly authorized them."**
+WIP commits every 15-20 minutes contradict the conservative git policy in
+AGENTS.md. **Proposed fix:** remove §11, or gate it behind an explicit
+orchestrator opt-in ("only when the orchestrator passes --allow-commits").
+
+**A3. §3 and §5 use `crates/*/Cargo.toml` paths — this repo has crates at
+the root.** The workspace members are `geometry/`, `crs/`, `expression/`, etc.,
+not `crates/geometry/`. **Proposed fix:** change all `crates/*/` references
+to root-level `*/Cargo.toml` and `*/src/`.
+
+### B. Incomplete coverage (should add)
+
+**B1. §4 DAG is missing several crates.** The workspace has 16 crates:
+geometry, spatial-index, crs, expression, fixtures, oracle, providers,
+analysis, server, pyo3, gui, qgis-bench, raster, mesh, pointcloud, render.
+The guidelines only mention 9. **Proposed fix:** add spatial-index, raster,
+mesh, pointcloud, and render to the DAG. Most are leaf crates (no
+interdependencies) and parallelize freely with E1/E2/E3.
+
+**B2. §5 single-writer table is missing `fixtures/manifest.toml`.** The
+fixture manifest is a shared resource that any implementer adding test data
+would touch. **Proposed fix:** add it to the §5 table as orchestrator-owned
+(or append-only with a pattern like `fixtures/`).
+
+**B3. No mention of the Paseo worktree lifecycle (agent loop §9).**
+Create → work → archive → prune. **Proposed fix:** add a §14 referencing
+agent loop §9 so the orchestrator knows to archive + prune after merge.
+
+**B4. No mention of the `./verify` CLI or per-worktree gates.** The
+guidelines say "per-worktree gates (test + clippy)" but don't reference the
+composable `./verify` tool that the project actually uses. **Proposed fix:**
+reference `./verify test` and `./verify clippy` in §6 and §13.
+
+**B5. §2 API locking doesn't mention ADRs or GLOSSARY.md.** The agent loop
+requires reading GLOSSARY.md + docs/adr/0001-0006 before any work, and new
+third-party crates need an ADR. **Proposed fix:** add a note in §2 that
+interface locking must be ADR-recorded if it introduces a new dependency.
+
+### C. Nice-to-have adjustments (consider)
+
+**C1. §10 batch merges vs. per-branch merges.** The agent loop merges each
+branch individually. Batching 2-3 is a reasonable optimization but only
+applies within a single wave. **Proposed fix:** add "within a wave" as a
+qualifier.
+
+**C2. §8 bead size discipline** is well-aligned with the agent loop. No
+changes needed.
+
+**C3. §1 "Split by crate, not by feature"** is sound but should note the
+`render/` crate as a potential dependency of `gui/` (E8) and `providers/`
+(E4) — rendering cuts across multiple epics. **Proposed fix:** add a note
+that `render/` is a cross-cutting concern and should be locked early.
+
+### D. Summary of proposed adjustments
+
+| Section | Action | Priority |
+|---|---|---|
+| §2 | Add ADR/GLOSSARY reference | Medium |
+| §3 | Fix `crates/*/` → root-level paths | High |
+| §4 | Add missing crates to DAG | High |
+| §5 | Fix paths; add `fixtures/manifest.toml` | High |
+| §6 | Add `./verify` CLI reference | Medium |
+| §10 | Add "within a wave" qualifier | Low |
+| §11 | Remove or gate behind orchestrator opt-in | High |
+| §12 | Delete; point to agent loop §10 | High |
+| §13 | Add `./verify` CLI; fix paths | Medium |
+| New §14 | Add Paseo worktree lifecycle pointer | Medium |
