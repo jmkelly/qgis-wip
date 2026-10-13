@@ -1,114 +1,88 @@
 //! PyO3 Python bindings for the QGIS Rust port.
+//!
+//! Serves identical `qgis.core` / `qgis.gui` / `qgis._3d` import paths from new
+//! PyO3 bindings, replacing SIP/PyQt6. See ADR-0003 for the compatibility
+//! decision.
+//!
+//! Each submodule owns the logic for one Python package and exposes it through
+//! plain Rust state structs, so the behaviour can be unit tested without an
+//! embedded interpreter.
+
+pub mod gui;
+pub mod processing;
+pub mod three_d;
 
 use pyo3::prelude::*;
+use pyo3::types::{PyDict, PyList};
 
-fn add_simple_class<T: pyo3::pyclass::PyClass>(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<T>()?;
+/// Adds the binding version string to a submodule.
+fn add_version(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add("__version__", env!("CARGO_PKG_VERSION"))
+}
+
+/// `qgis.core` bindings.
+#[pymodule]
+pub fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    add_version(m)
+}
+
+/// Registers a submodule under the `qgis` package namespace.
+///
+/// The submodule is also inserted into `sys.modules` under its dotted name, and
+/// the parent is marked as a package, so `import qgis.gui` resolves the same way
+/// it does against the SIP-built extension.
+fn add_qgis_submodule<'py>(
+    parent: &Bound<'py, PyModule>,
+    name: &str,
+    init: impl FnOnce(&Bound<'py, PyModule>) -> PyResult<()>,
+) -> PyResult<()> {
+    let sub = PyModule::new(parent.py(), name)?;
+    init(&sub)?;
+    parent.add_submodule(&sub)?;
+    sys_modules(parent.py())?.set_item(name, &sub)?;
     Ok(())
 }
 
-macro_rules! py_empty {
-    ($name:ident) => {
-        #[pyclass(skip_from_py_object)]
-        #[derive(Clone, Default)]
-        pub struct $name {}
-        #[pymethods]
-        impl $name {
-            #[new]
-            fn new() -> Self {
-                Self::default()
-            }
-        }
-    };
+/// The interpreter's `sys.modules` mapping.
+fn sys_modules(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
+    Ok(PyModule::import(py, "sys")?
+        .getattr("modules")?
+        .cast_into()?)
 }
 
-py_empty!(QgsGui);
-py_empty!(QgsMapCanvas);
-py_empty!(QgsLayerTreeMapCanvasBridge);
-py_empty!(QgsMessageBar);
-py_empty!(QgsProjectionSelectionWidget);
-
-py_empty!(Qgs3DMapScene);
-py_empty!(Qgs3DMapSettings);
-py_empty!(Qgs3DTypes);
-py_empty!(Qgs3DRenderer);
-
-py_empty!(QgsProcessingRegistry);
-py_empty!(QgsProcessingAlgorithm);
-py_empty!(QgsProcessingParameterField);
-py_empty!(QgsProcessingParameterNumber);
-py_empty!(QgsProcessingParameterString);
-py_empty!(QgsProcessingParameterBoolean);
-py_empty!(QgsProcessingParameterExtent);
-py_empty!(QgsProcessingParameterCrs);
-py_empty!(QgsProcessingOutput);
-py_empty!(QgsProcessingContext);
-py_empty!(QgsProcessingFeedback);
-
+/// The `qgis` package root; preserves the historical import paths.
 #[pymodule]
-fn gui(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    add_simple_class::<QgsGui>(m)?;
-    add_simple_class::<QgsMapCanvas>(m)?;
-    add_simple_class::<QgsLayerTreeMapCanvasBridge>(m)?;
-    add_simple_class::<QgsMessageBar>(m)?;
-    add_simple_class::<QgsProjectionSelectionWidget>(m)?;
-    Ok(())
-}
-
-#[pymodule]
-fn _3d(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    add_simple_class::<Qgs3DMapScene>(m)?;
-    add_simple_class::<Qgs3DMapSettings>(m)?;
-    add_simple_class::<Qgs3DTypes>(m)?;
-    add_simple_class::<Qgs3DRenderer>(m)?;
-    Ok(())
-}
-
-#[pymodule]
-fn _processing(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    add_simple_class::<QgsProcessingRegistry>(m)?;
-    add_simple_class::<QgsProcessingAlgorithm>(m)?;
-    add_simple_class::<QgsProcessingParameterField>(m)?;
-    add_simple_class::<QgsProcessingParameterNumber>(m)?;
-    add_simple_class::<QgsProcessingParameterString>(m)?;
-    add_simple_class::<QgsProcessingParameterBoolean>(m)?;
-    add_simple_class::<QgsProcessingParameterExtent>(m)?;
-    add_simple_class::<QgsProcessingParameterCrs>(m)?;
-    add_simple_class::<QgsProcessingOutput>(m)?;
-    add_simple_class::<QgsProcessingContext>(m)?;
-    add_simple_class::<QgsProcessingFeedback>(m)?;
-    Ok(())
-}
-
-#[pymodule]
-fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    Ok(())
-}
-
-#[pymodule]
-fn qgis(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    let core_mod = PyModule::new(m.py(), "qgis.core")?;
-    _core(&core_mod)?;
-    m.add_submodule(&core_mod)?;
-    let gui_mod = PyModule::new(m.py(), "qgis.gui")?;
-    gui(&gui_mod)?;
-    m.add_submodule(&gui_mod)?;
-    let d3_mod = PyModule::new(m.py(), "qgis._3d")?;
-    _3d(&d3_mod)?;
-    m.add_submodule(&d3_mod)?;
-    let proc_mod = PyModule::new(m.py(), "qgis.processing")?;
-    _processing(&proc_mod)?;
-    m.add_submodule(&proc_mod)?;
+pub fn qgis(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    add_version(m)?;
+    // An empty `__path__` marks this as a package without adding a filesystem
+    // location to search.
+    m.setattr("__path__", PyList::empty(m.py()))?;
+    add_qgis_submodule(m, "qgis.core", _core)?;
+    add_qgis_submodule(m, "qgis.gui", gui::gui)?;
+    add_qgis_submodule(m, "qgis._3d", three_d::three_d)?;
+    add_qgis_submodule(m, "qgis.processing", processing::_processing)?;
+    sys_modules(m.py())?.set_item("qgis", m)?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn placeholder() {}
+    fn gui_bindings_are_constructible() {
+        assert_eq!(gui::MapCanvas::default().layer_count(), 0);
+        assert!(gui::MessageBar::default().items().is_empty());
+        assert!(gui::ProjectionSelectionWidget::default().crs_valid());
+        assert!(!gui::LayerTreeMapCanvasBridge::default().has_canvas());
+    }
+
+    #[test]
+    fn three_d_bindings_are_constructible() {
+        assert_eq!(three_d::Map3DMapSettings::new().crs(), "EPSG:4326");
+        assert_eq!(three_d::Map3DScene::new().update_count(), 0);
+        assert_eq!(three_d::PlaneAlignment::Vertical.as_i64(), 1);
+        assert_eq!(three_d::OriginType::Relative.as_i64(), 1);
+        assert!(three_d::Renderer3D::new("QgsVectorLayer3DRenderer").is_valid());
+    }
 }

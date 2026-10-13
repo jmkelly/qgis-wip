@@ -5,5 +5,17 @@ edition.workspace = true
 license.workspace = true
 description = "PyO3 Python bindings for QGIS Rust port (replacing SIP/PyQt6)"
 
+[features]
+default = []
+# Enabled only when packaging a loadable CPython extension module. Leaving it
+# off lets `cargo test` link libpython, which the test binary needs.
+extension-module = ["pyo3/extension-module"]
+
 [dependencies]
-pyo3 = { workspace = true, features = ["extension-module"] }
+pyo3 = { workspace = true, features = ["macros"] }
+
+[dev-dependencies]
+# `auto-initialize` is dev-only: it pulls in libpython's interpreter bootstrap so
+# the integration tests can actually run Python. It is deliberately not a normal
+# dependency, since a packaged extension module must not auto-initialize.
+pyo3 = { workspace = true, features = ["auto-initialize", "macros"] }
