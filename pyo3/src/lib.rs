@@ -9,6 +9,7 @@
 //! embedded interpreter.
 
 pub mod gui;
+mod plugin_paths;
 pub mod processing;
 pub mod three_d;
 
@@ -57,6 +58,7 @@ pub fn qgis(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // An empty `__path__` marks this as a package without adding a filesystem
     // location to search.
     m.setattr("__path__", PyList::empty(m.py()))?;
+    plugin_paths::configure(m.py(), m)?;
     add_qgis_submodule(m, "qgis.core", _core)?;
     add_qgis_submodule(m, "qgis.gui", gui::gui)?;
     add_qgis_submodule(m, "qgis._3d", three_d::three_d)?;

@@ -286,6 +286,54 @@ assert QgsProcessingFeedback() is not None
     .expect("qgis.processing must keep working");
 }
 
+#[test]
+fn qgis_python_plugin_directories_are_importable() {
+    use std::fs;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static NEXT_FIXTURE: AtomicUsize = AtomicUsize::new(0);
+    let fixture = std::env::temp_dir().join(format!(
+        "qgis-pyo3-plugin-paths-{}-{}",
+        std::process::id(),
+        NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed)
+    ));
+    let python_root = fixture.join("python");
+    let plugins_root = python_root.join("plugins");
+
+    for (root, package, marker) in [
+        (&plugins_root, "processing", "processing fixture"),
+        (&python_root, "db_manager", "db_manager fixture"),
+        (&plugins_root, "MetaSearch", "MetaSearch fixture"),
+        (&python_root, "console", "console fixture"),
+    ] {
+        let package_dir = root.join(package);
+        fs::create_dir_all(&package_dir).expect("create plugin package fixture");
+        fs::write(
+            package_dir.join("__init__.py"),
+            format!("MARKER = {marker:?}\n"),
+        )
+        .expect("write plugin package fixture");
+    }
+
+    let source = format!(
+        r#"
+import qgis
+assert qgis.addPluginPath({plugins:?}) is True
+assert qgis.addPluginPath({python:?}) is True
+assert qgis.addPluginPath({python:?}) is False
+import processing, db_manager, MetaSearch, console
+assert processing.MARKER == "processing fixture"
+assert db_manager.MARKER == "db_manager fixture"
+assert MetaSearch.MARKER == "MetaSearch fixture"
+assert console.MARKER == "console fixture"
+"#,
+        plugins = plugins_root.to_string_lossy(),
+        python = python_root.to_string_lossy(),
+    );
+    run(&source).expect("QGIS Python and plugin packages must be importable");
+    fs::remove_dir_all(fixture).expect("remove plugin package fixture");
+}
+
 
 
 #[test]
@@ -323,4 +371,3 @@ print("ok")
     )
     .expect("debug 3d seq");
 }
-
