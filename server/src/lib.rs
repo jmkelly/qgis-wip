@@ -23,12 +23,16 @@ pub mod error;
 pub mod fcgi;
 pub mod fcgi_listener;
 pub mod http_server;
+pub mod landing;
 pub mod query;
 pub mod service;
+pub mod wcs;
 pub mod wms;
+pub mod wmts;
 
 pub use config::ServerConfig;
 pub use error::{Result, ServerError};
+pub use landing::{ServiceEntry, service_catalog};
 
 /// Runs the server with both FastCGI and HTTP listeners.
 ///

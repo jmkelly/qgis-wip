@@ -59,6 +59,8 @@ pub enum RequestType {
     GetMap,
     /// GetFeatureInfo request (WMS).
     GetFeatureInfo,
+    /// DescribeCoverage request (WCS).
+    DescribeCoverage,
     /// GetCoverage request (WCS).
     GetCoverage,
     /// GetTile request (WMTS).
@@ -75,6 +77,7 @@ impl RequestType {
         match s {
             "GetCapabilities" => Self::GetCapabilities,
             "DescribeFeatureType" => Self::DescribeFeatureType,
+            "DescribeCoverage" => Self::DescribeCoverage,
             "GetFeature" => Self::GetFeature,
             "GetMap" => Self::GetMap,
             "GetFeatureInfo" => Self::GetFeatureInfo,
@@ -90,6 +93,7 @@ impl RequestType {
         match self {
             Self::GetCapabilities => "GetCapabilities",
             Self::DescribeFeatureType => "DescribeFeatureType",
+            Self::DescribeCoverage => "DescribeCoverage",
             Self::GetFeature => "GetFeature",
             Self::GetMap => "GetMap",
             Self::GetFeatureInfo => "GetFeatureInfo",
@@ -101,9 +105,34 @@ impl RequestType {
     }
 }
 
+/// Derives the externally reachable base URL for capabilities documents.
+///
+/// Uses the `Host` request header when the frontend supplies one, falling
+/// back to the request URI's directory.
+pub fn base_url(request: &FcgiRequest) -> String {
+    let origin = match request.header("Host").filter(|h| !h.is_empty()) {
+        Some(host) => format!("http://{host}"),
+        None => String::new(),
+    };
+
+    let uri = request.request_uri();
+    let mut path = match uri.rfind('/') {
+        Some(idx) => &uri[..idx],
+        None => "",
+    };
+
+    // A FastCGI request URI points at the script, not its directory.
+    if let Some(stripped) = path.strip_suffix("qgis_mapserv.fcgi") {
+        path = stripped;
+    }
+
+    format!("{origin}{}", path.trim_end_matches('/'))
+}
+
 /// Routes a request to the appropriate service handler.
 pub fn route(request: &FcgiRequest) -> Result<FcgiResponse> {
     let query = QueryParameters::parse(request.query_string())?;
+    let base_url = base_url(request);
 
     let service_name = query.service().unwrap_or("");
     let service = ServiceType::from_name(service_name)
@@ -131,10 +160,20 @@ pub fn route(request: &FcgiRequest) -> Result<FcgiResponse> {
             handle_wfs_describe_feature_type(&query)
         }
         (ServiceType::Wfs, RequestType::GetFeature) => handle_wfs_get_feature(&query),
-        (ServiceType::Wcs, RequestType::GetCapabilities) => handle_wcs_get_capabilities(&query),
-        (ServiceType::Wcs, RequestType::GetCoverage) => handle_wcs_get_coverage(&query),
-        (ServiceType::Wmts, RequestType::GetCapabilities) => handle_wmts_get_capabilities(&query),
-        (ServiceType::Wmts, RequestType::GetTile) => handle_wmts_get_tile(&query),
+        (ServiceType::Wcs, RequestType::GetCapabilities) => {
+            crate::wcs::handle_get_capabilities(&query, &base_url)
+        }
+        (ServiceType::Wcs, RequestType::DescribeCoverage) => {
+            crate::wcs::handle_describe_coverage(&query)
+        }
+        (ServiceType::Wcs, RequestType::GetCoverage) => crate::wcs::handle_get_coverage(&query),
+        (ServiceType::Wmts, RequestType::GetCapabilities) => {
+            crate::wmts::handle_get_capabilities(&query, &base_url)
+        }
+        (ServiceType::Wmts, RequestType::GetTile) => crate::wmts::handle_get_tile(&query),
+        (ServiceType::Wmts, RequestType::GetFeatureInfo) => {
+            crate::wmts::handle_get_feature_info(&query)
+        }
         (service, RequestType::Unknown) => Err(ServerError::UnsupportedRequestType(format!(
             "{} for {}",
             request_name,
@@ -286,94 +325,6 @@ fn handle_wfs_get_feature(query: &QueryParameters) -> Result<FcgiResponse> {
     Ok(FcgiResponse::new(Bytes::from(body)))
 }
 
-/// WCS GetCapabilities handler.
-fn handle_wcs_get_capabilities(query: &QueryParameters) -> Result<FcgiResponse> {
-    debug!("handling WCS GetCapabilities");
-
-    let map_path = query.map().unwrap_or("");
-    if map_path.is_empty() {
-        return Ok(service_exception(
-            "MissingParameterValue",
-            "MAP parameter is required",
-        ));
-    }
-
-    // TODO: Load project and generate capabilities XML
-    let body = r#"<?xml version="1.0" encoding="UTF-8"?>
-<WCS_Capabilities version="2.0.1" xmlns="http://www.opengis.net/wcs/2.0">
-  <ServiceIdentification>
-    <Title>QGIS Rust Server</Title>
-  </ServiceIdentification>
-</WCS_Capabilities>"#;
-
-    Ok(FcgiResponse::new(Bytes::from(body)))
-}
-
-/// WCS GetCoverage handler.
-fn handle_wcs_get_coverage(query: &QueryParameters) -> Result<FcgiResponse> {
-    debug!("handling WCS GetCoverage");
-
-    let map_path = query.map().unwrap_or("");
-    if map_path.is_empty() {
-        return Ok(service_exception(
-            "MissingParameterValue",
-            "MAP parameter is required",
-        ));
-    }
-
-    // TODO: Get coverage from project
-    let body = r#"<?xml version="1.0" encoding="UTF-8"?>
-<ServiceExceptionReport version="1.3.0" xmlns="http://www.opengis.net/ogc">
-  <ServiceException code="NotImplemented">GetCoverage not yet implemented</ServiceException>
-</ServiceExceptionReport>"#;
-
-    Ok(FcgiResponse::new(Bytes::from(body)))
-}
-
-/// WMTS GetCapabilities handler.
-fn handle_wmts_get_capabilities(query: &QueryParameters) -> Result<FcgiResponse> {
-    debug!("handling WMTS GetCapabilities");
-
-    let map_path = query.map().unwrap_or("");
-    if map_path.is_empty() {
-        return Ok(service_exception(
-            "MissingParameterValue",
-            "MAP parameter is required",
-        ));
-    }
-
-    // TODO: Load project and generate capabilities XML
-    let body = r#"<?xml version="1.0" encoding="UTF-8"?>
-<Capabilities version="1.0.0" xmlns="http://www.opengis.net/wmts/1.0">
-  <ServiceIdentification>
-    <Title>QGIS Rust Server</Title>
-  </ServiceIdentification>
-</Capabilities>"#;
-
-    Ok(FcgiResponse::new(Bytes::from(body)))
-}
-
-/// WMTS GetTile handler.
-fn handle_wmts_get_tile(query: &QueryParameters) -> Result<FcgiResponse> {
-    debug!("handling WMTS GetTile");
-
-    let map_path = query.map().unwrap_or("");
-    if map_path.is_empty() {
-        return Ok(service_exception(
-            "MissingParameterValue",
-            "MAP parameter is required",
-        ));
-    }
-
-    // TODO: Render tile from project
-    let body = r#"<?xml version="1.0" encoding="UTF-8"?>
-<ServiceExceptionReport version="1.3.0" xmlns="http://www.opengis.net/ogc">
-  <ServiceException code="NotImplemented">GetTile not yet implemented</ServiceException>
-</ServiceExceptionReport>"#;
-
-    Ok(FcgiResponse::new(Bytes::from(body)))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -446,18 +397,18 @@ mod tests {
 
     #[test]
     fn route_wcs_get_capabilities() {
-        let req = make_request("SERVICE=WCS&REQUEST=GetCapabilities&MAP=/tmp/test.qgs");
+        let req = make_request("SERVICE=WCS&REQUEST=GetCapabilities&MAP=/nonexistent.qgs");
         let resp = route(&req).unwrap();
         let body = String::from_utf8_lossy(&resp.body);
-        assert!(body.contains("WCS_Capabilities"));
+        assert!(body.contains("NoApplicableCode"));
     }
 
     #[test]
     fn route_wmts_get_capabilities() {
-        let req = make_request("SERVICE=WMTS&REQUEST=GetCapabilities&MAP=/tmp/test.qgs");
+        let req = make_request("SERVICE=WMTS&REQUEST=GetCapabilities&MAP=/nonexistent.qgs");
         let resp = route(&req).unwrap();
         let body = String::from_utf8_lossy(&resp.body);
-        assert!(body.contains("Capabilities"));
+        assert!(body.contains("NoApplicableCode"));
     }
 
     #[test]
@@ -536,18 +487,106 @@ mod tests {
     }
 
     #[test]
-    fn wcs_get_coverage() {
+    fn wcs_get_coverage_missing_coverage_id() {
         let req = make_request("SERVICE=WCS&REQUEST=GetCoverage&MAP=/tmp/test.qgs");
         let resp = route(&req).unwrap();
         let body = String::from_utf8_lossy(&resp.body);
-        assert!(body.contains("NotImplemented"));
+        assert!(body.contains("MissingParameterValue"));
+        assert!(body.contains("COVERAGEID"));
     }
 
     #[test]
-    fn wmts_get_tile() {
+    fn wcs_describe_coverage_missing_coverage_id() {
+        let req = make_request("SERVICE=WCS&REQUEST=DescribeCoverage&MAP=/tmp/test.qgs");
+        let resp = route(&req).unwrap();
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("MissingParameterValue"));
+        assert!(body.contains("COVERAGEID"));
+    }
+
+    #[test]
+    fn wmts_get_tile_missing_layer() {
         let req = make_request("SERVICE=WMTS&REQUEST=GetTile&MAP=/tmp/test.qgs");
         let resp = route(&req).unwrap();
         let body = String::from_utf8_lossy(&resp.body);
-        assert!(body.contains("NotImplemented"));
+        assert!(body.contains("MissingParameterValue"));
+        assert!(body.contains("LAYER"));
+    }
+
+    #[test]
+    fn wmts_get_tile_renders_png() {
+        let req = make_request(
+            "SERVICE=WMTS&REQUEST=GetTile&MAP=/tmp/test.qgs&LAYER=roads&STYLE=default\
+             &TILEMATRIXSET=EPSG4326&TILEMATRIX=0&TILEROW=0&TILECOL=0",
+        );
+        let resp = route(&req).unwrap();
+        assert_eq!(&resp.body[0..8], &[137, 80, 78, 71, 13, 10, 26, 10]);
+    }
+
+    #[test]
+    fn wmts_get_feature_info_missing_params() {
+        let req = make_request("SERVICE=WMTS&REQUEST=GetFeatureInfo&MAP=/tmp/test.qgs");
+        let resp = route(&req).unwrap();
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("MissingParameterValue"));
+    }
+
+    #[test]
+    fn wmts_get_feature_info_returns_html() {
+        let req = make_request(
+            "SERVICE=WMTS&REQUEST=GetFeatureInfo&MAP=/tmp/test.qgs&LAYER=roads\
+             &TILEMATRIXSET=EPSG4326&TILEMATRIX=0&TILEROW=0&TILECOL=0&I=10&J=10",
+        );
+        let resp = route(&req).unwrap();
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<html"));
+    }
+
+    #[test]
+    fn wcs_get_capabilities_missing_map() {
+        let req = make_request("SERVICE=WCS&REQUEST=GetCapabilities");
+        let resp = route(&req).unwrap();
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("MissingParameterValue"));
+        assert!(body.contains("MAP"));
+    }
+
+    #[test]
+    fn base_url_uses_host_header() {
+        let mut params = NameValuePairs::new();
+        params.insert("REQUEST_METHOD".to_string(), "GET".to_string());
+        params.insert("QUERY_STRING".to_string(), String::new());
+        params.insert("REQUEST_URI".to_string(), "/wms".to_string());
+        params.insert("HTTP_HOST".to_string(), "example.com:9090".to_string());
+        let req = FcgiRequest {
+            request_id: 1,
+            params,
+            body: Bytes::new(),
+        };
+        assert_eq!(base_url(&req), "http://example.com:9090");
+    }
+
+    #[test]
+    fn base_url_strips_script_path() {
+        let mut params = NameValuePairs::new();
+        params.insert("REQUEST_METHOD".to_string(), "GET".to_string());
+        params.insert("QUERY_STRING".to_string(), String::new());
+        params.insert(
+            "REQUEST_URI".to_string(),
+            "/cgi-bin/qgis_mapserv.fcgi".to_string(),
+        );
+        params.insert("HTTP_HOST".to_string(), "example.com".to_string());
+        let req = FcgiRequest {
+            request_id: 1,
+            params,
+            body: Bytes::new(),
+        };
+        assert_eq!(base_url(&req), "http://example.com/cgi-bin");
+    }
+
+    #[test]
+    fn base_url_without_host_header() {
+        let req = make_request("SERVICE=WMS&REQUEST=GetCapabilities");
+        assert_eq!(base_url(&req), "/cgi-bin");
     }
 }

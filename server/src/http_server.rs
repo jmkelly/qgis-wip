@@ -38,24 +38,22 @@ pub fn build_router(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// Root handler — returns service info.
-async fn root_handler(State(state): State<AppState>) -> Response {
-    let body = format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<QGISServer>
-  <Service>WMS</Service>
-  <Service>WFS</Service>
-  <Service>WCS</Service>
-  <Service>WMTS</Service>
-  <Host>{}</Host>
-  <Port>{}</Port>
-</QGISServer>"#,
-        state.config.host, state.config.port
-    );
+/// Builds the externally reachable base URL for this server.
+fn base_url(config: &crate::config::ServerConfig, headers: &HeaderMap) -> String {
+    match headers.get("host").and_then(|v| v.to_str().ok()) {
+        Some(host) if !host.is_empty() => format!("http://{host}"),
+        _ => format!("http://{}:{}", config.host, config.port),
+    }
+}
+
+/// Root handler — renders the landing page service catalog.
+async fn root_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let base = base_url(&state.config, &headers);
+    let body = crate::landing::render(&base, &state.config.host, state.config.port);
 
     Response::builder()
         .status(StatusCode::OK)
-        .header("Content-Type", "application/xml")
+        .header("Content-Type", "text/html; charset=utf-8")
         .body(Body::from(body))
         .unwrap()
 }
@@ -64,7 +62,7 @@ async fn root_handler(State(state): State<AppState>) -> Response {
 async fn ogc_handler(
     State(_state): State<AppState>,
     AxumQuery(params): AxumQuery<HashMap<String, String>>,
-    _headers: HeaderMap,
+    headers: HeaderMap,
 ) -> Response {
     debug!("HTTP handler received request with {} query params", params.len());
 
@@ -130,6 +128,9 @@ async fn ogc_handler(
             p.insert("REQUEST_METHOD".to_string(), "GET".to_string());
             p.insert("QUERY_STRING".to_string(), query_string);
             p.insert("REQUEST_URI".to_string(), "/".to_string());
+            if let Some(host) = headers.get("host").and_then(|v| v.to_str().ok()) {
+                p.insert("HTTP_HOST".to_string(), host.to_string());
+            }
             p
         },
         body: Bytes::new(),
