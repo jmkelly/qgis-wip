@@ -4,6 +4,7 @@
 //! See ADR-0001 for the no-FFI policy decision.
 
 pub mod ast;
+pub mod errors;
 pub mod eval;
 pub mod functions;
 pub mod lexer;
@@ -13,14 +14,41 @@ pub mod regex;
 pub use ast::{
     simplify, BinaryOp, Expr, IsTarget, Literal, UnaryOp,
 };
+pub use errors::ExpressionError;
 pub use eval::{evaluate, Context, EvalContext, EvalError, FeatureRef};
 pub use lexer::{Keyword, LexError, Op, Token, lex};
 pub use parser::{ParseError, parse};
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
+fn expr_cache() -> &'static Mutex<HashMap<String, Expr>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Expr>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Compile an expression string into an AST, using a cache to avoid
+/// re-parsing identical expressions.
+pub fn compile(input: &str) -> Result<Expr, ExpressionError> {
+    {
+        let cache = expr_cache().lock().unwrap();
+        if let Some(expr) = cache.get(input) {
+            return Ok(expr.clone());
+        }
+    }
+    let expr = crate::parser::parse(input).map_err(ExpressionError::from)?;
+    let simplified = simplify(expr);
+    {
+        let mut cache = expr_cache().lock().unwrap();
+        cache.insert(input.to_string(), simplified.clone());
+    }
+    Ok(simplified)
+}
+
 /// Parse, simplify, and evaluate an expression in one step.
-pub fn eval_str(input: &str, ctx: &EvalContext) -> Result<Literal, EvalError> {
-    let expr = parse_simplified(input).map_err(|e| EvalError::Nested(e.to_string()))?;
-    evaluate(&expr, ctx)
+pub fn eval_str(input: &str, ctx: &EvalContext) -> Result<Literal, ExpressionError> {
+    let expr = compile(input)?;
+    evaluate(&expr, ctx).map_err(ExpressionError::from)
 }
 
 /// Parse and simplify an expression string in one step.
