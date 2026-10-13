@@ -33,6 +33,18 @@ py_empty!(Qgs3DMapSettings);
 py_empty!(Qgs3DTypes);
 py_empty!(Qgs3DRenderer);
 
+py_empty!(QgsProcessingRegistry);
+py_empty!(QgsProcessingAlgorithm);
+py_empty!(QgsProcessingParameterField);
+py_empty!(QgsProcessingParameterNumber);
+py_empty!(QgsProcessingParameterString);
+py_empty!(QgsProcessingParameterBoolean);
+py_empty!(QgsProcessingParameterExtent);
+py_empty!(QgsProcessingParameterCrs);
+py_empty!(QgsProcessingOutput);
+py_empty!(QgsProcessingContext);
+py_empty!(QgsProcessingFeedback);
+
 #[pymodule]
 fn gui(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -55,6 +67,23 @@ fn _3d(m: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 #[pymodule]
+fn _processing(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+    add_simple_class::<QgsProcessingRegistry>(m)?;
+    add_simple_class::<QgsProcessingAlgorithm>(m)?;
+    add_simple_class::<QgsProcessingParameterField>(m)?;
+    add_simple_class::<QgsProcessingParameterNumber>(m)?;
+    add_simple_class::<QgsProcessingParameterString>(m)?;
+    add_simple_class::<QgsProcessingParameterBoolean>(m)?;
+    add_simple_class::<QgsProcessingParameterExtent>(m)?;
+    add_simple_class::<QgsProcessingParameterCrs>(m)?;
+    add_simple_class::<QgsProcessingOutput>(m)?;
+    add_simple_class::<QgsProcessingContext>(m)?;
+    add_simple_class::<QgsProcessingFeedback>(m)?;
+    Ok(())
+}
+
+#[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
@@ -72,6 +101,9 @@ fn qgis(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let d3_mod = PyModule::new(m.py(), "qgis._3d")?;
     _3d(&d3_mod)?;
     m.add_submodule(&d3_mod)?;
+    let proc_mod = PyModule::new(m.py(), "qgis.processing")?;
+    _processing(&proc_mod)?;
+    m.add_submodule(&proc_mod)?;
     Ok(())
 }
 
