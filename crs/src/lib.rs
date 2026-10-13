@@ -29,7 +29,7 @@ pub use facade::{CrsTransform, TransformError};
 pub use grids::{load_ntv2, load_ntv2_from_file, GridCatalog, GridError, Ntv2Grid};
 pub use pipeline_exec::{execute_pipeline, PipelineError, UnitKind};
 pub use towgs84::{Towgs84, Towgs84Error};
-pub use wkt2::{parse_wkt2, ParsedCrs, Wkt2Error};
+pub use wkt2::{emit_wkt2, parse_wkt2, ParsedCrs, Wkt2Error};
 
 use std::f64::consts::PI;
 

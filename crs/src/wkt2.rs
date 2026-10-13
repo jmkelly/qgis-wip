@@ -1261,6 +1261,110 @@ pub fn parse_wkt2(input: &str) -> Result<ParsedCrs, Wkt2Error> {
     parser.parse()
 }
 
+
+/// Convenience function to emit a WKT2:2019 string from a parsed CRS.
+pub fn emit_wkt2(crs: &ParsedCrs) -> String {
+    fcrs(crs)
+}
+
+fn fid(id: &AuthorityId) -> String {
+    format!("ID[\"{}\",{}]", id.authority, id.code)
+}
+
+fn fell(e: &Ellipsoid) -> String {
+    let base = format!("ELLIPSOID[\"{}\",{},{}", e.name, e.semi_major_axis, e.inverse_flattening);
+    match &e.id { Some(id) => format!("{},{}]", base, fid(id)), None => format!("{}]", base) }
+}
+
+fn fpm(pm: &PrimeMeridian) -> String {
+    let base = format!("PRIMEM[\"{}\",{}", pm.name, pm.longitude);
+    match &pm.id { Some(id) => format!("{},{}]", base, fid(id)), None => format!("{}]", base) }
+}
+
+fn fd(d: &Datum) -> String {
+    if let Some(ens) = &d.ensemble {
+        let members: Vec<String> = ens.members.iter().map(|m| match &m.id {
+            Some(id) => format!("MEMBER[\"{}\",{}]", m.name, fid(id)),
+            None => format!("MEMBER[\"{}\"]", m.name),
+        }).collect();
+        format!("ENSEMBLE[\"{}\",{}, {},ENSEMBLEACCURACY[{},ID[\"EPSG\",6323]]]",
+            ens.name, members.join(","), fell(d.ellipsoid.as_ref().unwrap()), ens.accuracy)
+    } else {
+        format!("DATUM[\"{}\",{}]", d.name, fell(d.ellipsoid.as_ref().unwrap()))
+    }
+}
+
+fn fm(m: &Method) -> String {
+    match &m.id { Some(id) => format!("METHOD[\"{}\",{}]", m.name, fid(id)), None => format!("METHOD[\"{}\"]", m.name) }
+}
+
+fn fparam(p: &Parameter) -> String {
+    match &p.id { Some(id) => format!("PARAMETER[\"{}\",{},{}]", p.name, p.value, fid(id)), None => format!("PARAMETER[\"{}\",{}]", p.name, p.value) }
+}
+
+fn fconv(c: &Conversion) -> String {
+    let ps: Vec<String> = c.parameters.iter().map(fparam).collect();
+    format!("CONVERSION[\"{}\",{},{}]", c.name, fm(&c.method), ps.join(","))
+}
+
+fn fax(a: &Axis) -> String {
+    format!("AXIS[\"{}\",{}]", a.name, a.direction)
+}
+
+fn fcs(cs: &CoordinateSystem) -> String {
+    let axes: Vec<String> = cs.axes.iter().map(fax).collect();
+    let mut s = format!("CS[{},{}]", cs.type_, cs.axes.len());
+    for a in axes { s.push(','); s.push_str(&a); }
+    s
+}
+
+fn fcrs(crs: &ParsedCrs) -> String {
+    match crs.crs_type.as_str() {
+        "COMPD_CS" => {
+            let comps: Vec<String> = crs.components.iter().map(fcrs).collect();
+            let mut s = format!("COMPD_CS[\"{}\",{}", crs.name, comps.join(","));
+            if let Some(id) = &crs.id { s.push(','); s.push_str(&fid(id)); }
+            s.push(']');
+            s
+        }
+        "BASEGEOGCRS" => {
+            let mut s = format!("BASEGEOGCRS[\"{}\"", crs.name);
+            if let Some(d) = &crs.datum { s.push(','); s.push_str(&fd(d)); }
+            if let Some(pm) = &crs.prime_meridian { s.push(','); s.push_str(&fpm(pm)); }
+            s.push(']');
+            s
+        }
+        "PROJCRS" => {
+            // build base geog crs
+            let base = ParsedCrs { crs_type: "BASEGEOGCRS".into(), name: crs.name.clone(), id: None, datum: crs.datum.clone(), ellipsoid: crs.ellipsoid.clone(), prime_meridian: crs.prime_meridian.clone(), cs: None, conversion: None, components: vec![], axes: vec![], units: vec![] };
+            let mut s = format!("PROJCRS[\"{}\",{},{}", crs.name, fcrs(&base), crs.conversion.as_ref().map(fconv).unwrap());
+            if let Some(cs) = &crs.cs { s.push(','); s.push_str(&fcs(cs)); }
+            if let Some(id) = &crs.id { s.push(','); s.push_str(&fid(id)); }
+            s.push(']');
+            s
+        }
+        "VERTCRS" => {
+            let mut s = format!("VERTCRS[\"{}\"", crs.name);
+            if let Some(d) = &crs.datum { s.push(','); s.push_str(&fd(d)); }
+            if let Some(cs) = &crs.cs { s.push(','); s.push_str(&fcs(cs)); }
+            if let Some(id) = &crs.id { s.push(','); s.push_str(&fid(id)); }
+            s.push(']');
+            s
+        }
+        _ => {
+            // GEOGCRS / GEODCRS
+            let mut s = format!("{}[\"{}\"", crs.crs_type, crs.name);
+            if let Some(d) = &crs.datum { s.push(','); s.push_str(&fd(d)); }
+            if let Some(pm) = &crs.prime_meridian { s.push(','); s.push_str(&fpm(pm)); }
+            if let Some(cs) = &crs.cs { s.push(','); s.push_str(&fcs(cs)); }
+            if let Some(id) = &crs.id { s.push(','); s.push_str(&fid(id)); }
+            s.push(']');
+            s
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
