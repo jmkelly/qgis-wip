@@ -3182,6 +3182,9 @@ dependencies = [
 [[package]]
 name = "qgis-render"
 version = "0.1.0"
+dependencies = [
+ "png",
+]
 
 [[package]]
 name = "qgis-server"

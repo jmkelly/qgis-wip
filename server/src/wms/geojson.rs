@@ -52,7 +52,7 @@ pub struct FeatureCollection {
 pub fn parse_geojson(text: &str) -> Result<FeatureCollection, GeoJsonError> {
     let value = parse_json(text).map_err(GeoJsonError::InvalidJson)?;
 
-    let obj = value.as_object().ok_or(GeoJsonError::NotAFeatureCollection)?;
+    let _obj = value.as_object().ok_or(GeoJsonError::NotAFeatureCollection)?;
     let type_name = JsonValue::get(&value, "type")
         .and_then(|v| v.as_str())
         .ok_or_else(|| GeoJsonError::InvalidJson("missing type".to_string()))?;
@@ -85,11 +85,11 @@ pub fn parse_geojson(text: &str) -> Result<FeatureCollection, GeoJsonError> {
 fn parse_feature(value: &JsonValue) -> Result<WmsFeature, String> {
     let _obj = value.as_object().ok_or("not an object")?;
 
-    let geometry_val = JsonValue::get(&value, "geometry")
+    let geometry_val = JsonValue::get(value, "geometry")
         .ok_or_else(|| "missing geometry".to_string())?;
     let geometry = parse_geometry(geometry_val)?;
 
-    let properties = JsonValue::get(&value, "properties")
+    let properties = JsonValue::get(value, "properties")
         .and_then(|p| p.as_object())
         .map(|obj| {
             obj.iter()
@@ -116,10 +116,10 @@ fn parse_feature(value: &JsonValue) -> Result<WmsFeature, String> {
 /// Parses a GeoJSON geometry object.
 fn parse_geometry(value: &JsonValue) -> Result<Geometry, String> {
     let _obj = value.as_object().ok_or("geometry not an object")?;
-    let type_name = JsonValue::get(&value, "type")
+    let type_name = JsonValue::get(value, "type")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "missing geometry type".to_string())?;
-    let coords = JsonValue::get(&value, "coordinates")
+    let coords = JsonValue::get(value, "coordinates")
         .and_then(|c| c.as_array())
         .ok_or_else(|| "missing coordinates".to_string())?;
 
@@ -168,7 +168,7 @@ fn parse_geometry(value: &JsonValue) -> Result<Geometry, String> {
             Ok(Geometry::MultiPolygon(qgis_geometry::MultiPolygon::new(polys)))
         }
         "GeometryCollection" => {
-            let geometries_arr = JsonValue::get(&value, "geometries")
+            let geometries_arr = JsonValue::get(value, "geometries")
                 .and_then(|g| g.as_array())
                 .ok_or_else(|| "missing geometries".to_string())?;
             let geoms: Vec<Geometry> = geometries_arr
@@ -593,12 +593,14 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn json_parser_basic_types() {
         assert_eq!(parse_json("null").unwrap(), JsonValue::Null);
         assert_eq!(parse_json("true").unwrap(), JsonValue::Bool(true));
         assert_eq!(parse_json("false").unwrap(), JsonValue::Bool(false));
         assert_eq!(parse_json("42").unwrap(), JsonValue::Number(42.0));
-        assert_eq!(parse_json("-3.14").unwrap(), JsonValue::Number(-3.14));
+        let approx_pi = -3.14;
+        assert_eq!(parse_json("-3.14").unwrap(), JsonValue::Number(approx_pi));
         assert_eq!(
             parse_json("\"hello\"").unwrap(),
             JsonValue::String("hello".to_string())

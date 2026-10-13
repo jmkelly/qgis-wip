@@ -15,7 +15,6 @@ use qgis_render::Pixel;
 use std::collections::HashMap;
 
 use super::get_map::LayerStyle;
-use super::geojson::GeoJsonError;
 
 /// A parsed QGIS project.
 #[derive(Debug, Clone)]
@@ -199,7 +198,7 @@ fn get_layer_crs(element: &XmlElement) -> Option<String> {
         if child.name == "srs" {
             for srs_child in &child.children {
                 if srs_child.name == "spatialrefsys" {
-                    return get_child_text(&srs_child, "authid");
+                    return get_child_text(srs_child, "authid");
                 }
             }
         }
@@ -324,9 +323,8 @@ impl<'a> XmlParser<'a> {
         self.skip_ws();
         // Skip XML declaration and doctype
         while self.peek() == Some(b'<') {
-            if self.text[self.pos..].starts_with(b"<?") {
-                self.skip_until(b'>')?;
-            } else if self.text[self.pos..].starts_with(b"<!") {
+            if self.text[self.pos..].starts_with(b"<?") || self.text[self.pos..].starts_with(b"<!")
+            {
                 self.skip_until(b'>')?;
             } else {
                 break;
@@ -571,7 +569,7 @@ mod tests {
         assert_eq!(project.layers[0].datasource, "./points.geojson");
         assert_eq!(project.layers[0].provider, "geojson");
         assert_eq!(project.layers[0].geometry_type.as_deref(), Some("Point"));
-        assert_eq!(project.layers[0].visible, true);
+        assert!(project.layers[0].visible);
         assert_eq!(project.layers[0].crs.as_deref(), Some("EPSG:4326"));
     }
 

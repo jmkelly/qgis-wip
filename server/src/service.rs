@@ -125,8 +125,6 @@ pub fn route(request: &FcgiRequest) -> Result<FcgiResponse> {
         (ServiceType::Wms, RequestType::GetFeatureInfo) => {
             crate::wms::handle_get_feature_info(&query)
         }
-        (ServiceType::Wms, RequestType::GetMap) => handle_wms_get_map(&query),
-        (ServiceType::Wms, RequestType::GetFeatureInfo) => handle_wms_get_feature_info(&query),
         (ServiceType::Wms, RequestType::GetLegendGraphic) => handle_wms_get_legend_graphic(&query),
         (ServiceType::Wfs, RequestType::GetCapabilities) => handle_wfs_get_capabilities(&query),
         (ServiceType::Wfs, RequestType::DescribeFeatureType) => {
@@ -198,63 +196,6 @@ fn handle_wms_get_capabilities(query: &QueryParameters) -> Result<FcgiResponse> 
 </WMS_Capabilities>"#,
         version
     );
-
-    Ok(FcgiResponse::new(Bytes::from(body)))
-}
-
-/// WMS GetMap handler.
-fn handle_wms_get_map(query: &QueryParameters) -> Result<FcgiResponse> {
-    debug!("handling WMS GetMap");
-
-    let map_path = query.map().unwrap_or("");
-    if map_path.is_empty() {
-        return Ok(service_exception(
-            "MissingParameterValue",
-            "MAP parameter is required",
-        ));
-    }
-
-    let layers = query.layers();
-    if layers.is_empty() {
-        return Ok(service_exception(
-            "MissingParameterValue",
-            "LAYERS parameter is required",
-        ));
-    }
-
-    let crs = query.crs().unwrap_or("EPSG:4326");
-
-    // TODO: Render map from project
-    let body = format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<ServiceExceptionReport version="1.3.0" xmlns="http://www.opengis.net/ogc">
-  <ServiceException code="NotImplemented">GetMap rendering not yet implemented (map={}, layers={}, crs={})</ServiceException>
-</ServiceExceptionReport>"#,
-        map_path,
-        layers.join(","),
-        crs
-    );
-
-    Ok(FcgiResponse::new(Bytes::from(body)))
-}
-
-/// WMS GetFeatureInfo handler.
-fn handle_wms_get_feature_info(query: &QueryParameters) -> Result<FcgiResponse> {
-    debug!("handling WMS GetFeatureInfo");
-
-    let map_path = query.map().unwrap_or("");
-    if map_path.is_empty() {
-        return Ok(service_exception(
-            "MissingParameterValue",
-            "MAP parameter is required",
-        ));
-    }
-
-    // TODO: Query features at location
-    let body = r#"<?xml version="1.0" encoding="UTF-8"?>
-<ServiceExceptionReport version="1.3.0" xmlns="http://www.opengis.net/ogc">
-  <ServiceException code="NotImplemented">GetFeatureInfo not yet implemented</ServiceException>
-</ServiceExceptionReport>"#;
 
     Ok(FcgiResponse::new(Bytes::from(body)))
 }

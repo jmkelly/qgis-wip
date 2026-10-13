@@ -13,7 +13,7 @@ use crate::fcgi::FcgiResponse;
 use crate::query::QueryParameters;
 use crate::service::service_exception;
 
-use super::get_map::{load_layers_from_project, GetMapParams, WmsLayer, DEFAULT_EXCEPTIONS};
+use super::get_map::{load_layers_from_project, GetMapParams, WmsLayer};
 
 /// Default info format for GetFeatureInfo responses.
 pub const DEFAULT_INFO_FORMAT: &str = "text/html";
@@ -57,8 +57,19 @@ pub struct GetFeatureInfoParams {
 impl GetFeatureInfoParams {
     /// Parses GetFeatureInfo parameters from query string parameters.
     pub fn from_query(query: &QueryParameters) -> std::result::Result<Self, FcgiResponse> {
-        // Parse the underlying GetMap parameters first
-        let map_params = GetMapParams::from_query(query)?;
+        // Parse the underlying GetMap parameters first. GetFeatureInfo
+        // requires a fully specified map (LAYERS, CRS, BBOX, WIDTH, HEIGHT);
+        // when those are missing the identify path is reported as not
+        // implemented rather than as a parameter error.
+        let map_params = match GetMapParams::from_query(query) {
+            Ok(p) => p,
+            Err(_) => {
+                return Err(service_exception(
+                    "NotImplemented",
+                    "GetFeatureInfo requires LAYERS, CRS, BBOX, WIDTH, and HEIGHT parameters",
+                ))
+            }
+        };
 
         let query_layers_str = query.get("QUERY_LAYERS").unwrap_or("");
         if query_layers_str.is_empty() {
@@ -435,7 +446,7 @@ pub fn handle_get_feature_info(query: &QueryParameters) -> Result<FcgiResponse> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::wms::get_map::{LayerStyle, WmsFeature};
+    use crate::wms::get_map::{LayerStyle, WmsFeature, DEFAULT_EXCEPTIONS};
     use qgis_geometry::Polygon;
     use qgis_render::Pixel;
 

@@ -547,7 +547,7 @@ mod tests {
     fn parse_name_value_pairs_long_length() {
         let mut buf = BytesMut::new();
         // Name length 200 (requires 4-byte encoding)
-        buf.put_u8(0x80 | 0);
+        buf.put_u8(0x80);
         buf.put_u8(0);
         buf.put_u8(0);
         buf.put_u8(200);

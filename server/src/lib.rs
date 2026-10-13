@@ -16,7 +16,9 @@
 //! Both frontends feed into the `service` module, which routes to the
 //! appropriate OGC service handler (WMS, WFS, WCS, WMTS).
 
+pub mod auth;
 pub mod config;
+pub mod config_cache;
 pub mod error;
 pub mod fcgi;
 pub mod fcgi_listener;
