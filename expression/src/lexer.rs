@@ -19,6 +19,10 @@ pub enum Token {
     ColumnRef(String),
     /// A bracketed column reference (e.g., `[field_name]`).
     BracketRef(String),
+    /// A variable reference (e.g., `@my_var`).
+    Variable(String),
+    /// A dollar-prefixed variable (e.g., `$geometry`, `$area`).
+    DollarVar(String),
     /// A keyword (AND, OR, NOT, etc.).
     Keyword(Keyword),
     /// An operator or punctuation.
@@ -135,6 +139,22 @@ pub fn lex(input: &str) -> Result<Vec<Token>, LexError> {
         // Bracketed column reference
         if c == '[' {
             let (tok, next) = lex_bracket_ref(&chars, i)?;
+            tokens.push(tok);
+            i = next;
+            continue;
+        }
+
+        // Variable reference (@variable)
+        if c == '@' {
+            let (tok, next) = lex_variable(&chars, i, '@')?;
+            tokens.push(tok);
+            i = next;
+            continue;
+        }
+
+        // Dollar-prefixed variable ($geometry, $area, etc.)
+        if c == '$' {
+            let (tok, next) = lex_variable(&chars, i, '$')?;
             tokens.push(tok);
             i = next;
             continue;
@@ -262,6 +282,26 @@ fn lex_bracket_ref(chars: &[char], start: usize) -> Result<(Token, usize), LexEr
         message: "unterminated bracket reference".to_string(),
         position: start,
     })
+}
+
+fn lex_variable(chars: &[char], start: usize, prefix: char) -> Result<(Token, usize), LexError> {
+    let mut i = start + 1; // skip prefix character
+    while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
+        i += 1;
+    }
+    let text: String = chars[start + 1..i].iter().collect();
+    if text.is_empty() {
+        return Err(LexError {
+            message: format!("expected identifier after '{}'", prefix),
+            position: start,
+        });
+    }
+    let tok = if prefix == '@' {
+        Token::Variable(text)
+    } else {
+        Token::DollarVar(text)
+    };
+    Ok((tok, i))
 }
 
 fn lex_operator(chars: &[char], start: usize) -> Option<(Op, usize)> {
@@ -515,6 +555,75 @@ mod tests {
     fn lex_ident_with_digits() {
         let toks = lex("var123").unwrap();
         assert_eq!(toks, vec![Token::Ident("var123".to_string())]);
+    }
+
+    #[test]
+    fn lex_variable_at() {
+        let toks = lex("@my_var").unwrap();
+        assert_eq!(toks, vec![Token::Variable("my_var".to_string())]);
+    }
+
+    #[test]
+    fn lex_variable_dollar() {
+        let toks = lex("$geometry").unwrap();
+        assert_eq!(toks, vec![Token::DollarVar("geometry".to_string())]);
+    }
+
+    #[test]
+    fn lex_variable_dollar_area() {
+        let toks = lex("$area").unwrap();
+        assert_eq!(toks, vec![Token::DollarVar("area".to_string())]);
+    }
+
+    #[test]
+    fn lex_variable_at_with_underscore() {
+        let toks = lex("@_private").unwrap();
+        assert_eq!(toks, vec![Token::Variable("_private".to_string())]);
+    }
+
+    #[test]
+    fn lex_variable_at_with_digits() {
+        let toks = lex("@var123").unwrap();
+        assert_eq!(toks, vec![Token::Variable("var123".to_string())]);
+    }
+
+    #[test]
+    fn lex_error_at_no_ident() {
+        let result = lex("@");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn lex_error_dollar_no_ident() {
+        let result = lex("$");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn lex_variable_in_expression() {
+        let toks = lex("@var + 1").unwrap();
+        assert_eq!(
+            toks,
+            vec![
+                Token::Variable("var".to_string()),
+                Token::Op(Op::Plus),
+                Token::Integer(1),
+            ]
+        );
+    }
+
+    #[test]
+    fn lex_dollar_in_expression() {
+        let toks = lex("$geometry IS NOT NULL").unwrap();
+        assert_eq!(
+            toks,
+            vec![
+                Token::DollarVar("geometry".to_string()),
+                Token::Keyword(Keyword::Is),
+                Token::Keyword(Keyword::Not),
+                Token::Keyword(Keyword::Null),
+            ]
+        );
     }
 
     #[test]

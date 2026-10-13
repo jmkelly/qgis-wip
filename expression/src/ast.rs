@@ -110,6 +110,10 @@ pub enum Expr {
     Literal(Literal),
     /// A field reference (e.g., `"field_name"` or `[field_name]`).
     FieldRef(String),
+    /// A variable reference (e.g., `@my_var`).
+    Variable(String),
+    /// A dollar-prefixed variable (e.g., `$geometry`, `$area`).
+    DollarVar(String),
     /// A function call: name and arguments.
     FunctionCall(String, Vec<Expr>),
     /// Binary operation.
@@ -165,6 +169,8 @@ impl fmt::Display for Expr {
         match self {
             Expr::Literal(l) => write!(f, "{}", l),
             Expr::FieldRef(name) => write!(f, "\"{}\"", name),
+            Expr::Variable(name) => write!(f, "@{}", name),
+            Expr::DollarVar(name) => write!(f, "${}", name),
             Expr::FunctionCall(name, args) => {
                 write!(f, "{}(", name)?;
                 for (i, arg) in args.iter().enumerate() {
