@@ -249,7 +249,7 @@ pub fn mercator_to_lon(x: f64) -> f64 {
 
 /// Converts a Web Mercator y ordinate (metres) back to a latitude.
 pub fn mercator_to_lat(y: f64) -> f64 {
-    (y / WEB_MERCATOR_HALF).atan().to_degrees()
+    (y / EARTH_RADIUS).tanh().asin().to_degrees()
 }
 
 #[cfg(test)]
@@ -398,7 +398,7 @@ mod tests {
         assert!((mercator_x(180.0) - WEB_MERCATOR_HALF).abs() < 1e-6);
         assert!(mercator_y(0.0).abs() < 1e-9);
         // The projection clamps beyond its latitude limit.
-        assert!(mercator_y(89.0).abs() < 1e-3);
+        assert!(mercator_y(89.0) >= WEB_MERCATOR_HALF - 1.0);
     }
 
     #[test]
