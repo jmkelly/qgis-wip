@@ -120,7 +120,7 @@ pub fn resolve_ensemble(ensemble: &DatumEnsemble, epoch: Option<f64>) -> Result<
 /// last member if the epoch is beyond all named years.
 fn select_member_for_epoch(members: &[EnsembleMember], epoch: f64) -> &EnsembleMember {
     for member in members {
-        if let Some(year) = extract_year_from_name(&member.name) {
+        if let Some(year) = extract_g_code_year(&member.name) {
             if year as f64 >= epoch {
                 return member;
             }
@@ -130,11 +130,11 @@ fn select_member_for_epoch(members: &[EnsembleMember], epoch: f64) -> &EnsembleM
     &members[members.len() - 1]
 }
 
-/// Extracts a 4-digit year from a member name (e.g., "WGS 84 (G1762)" → 2016).
+/// Extracts a 4-digit year from a member name (e.g., "WGS 84 (2016)" → 2016).
 ///
-/// QGIS names WGS 84 ensemble members with the tracking-station launch
-/// year. We extract the first 4-digit number that looks like a year
-/// (1970–2099).
+/// Looks for the first 4-digit number that looks like a year (1970–2099).
+/// Does NOT extract G-codes (e.g., "G1762") as years — use
+/// [`extract_g_code_year`] for that.
 fn extract_year_from_name(name: &str) -> Option<u32> {
     let chars: Vec<char> = name.chars().collect();
     let mut i = 0;
@@ -146,6 +146,30 @@ fn extract_year_from_name(name: &str) -> Option<u32> {
             }
         }
         i += 1;
+    }
+    None
+}
+
+/// Extracts the realization year from a WGS 84 G-code.
+///
+/// QGIS names WGS 84 ensemble members like "World Geodetic System 1984 (G730)".
+/// The G-code maps to a realization year:
+///   G730 → 1987, G873 → 1994, G1150 → 2001, G1674 → 2011,
+///   G1762 → 2016, G2139 → 2020, G2296 → 2022.
+fn extract_g_code_year(name: &str) -> Option<u32> {
+    let g_code_years: &[(&str, u32)] = &[
+        ("G730", 1987),
+        ("G873", 1994),
+        ("G1150", 2001),
+        ("G1674", 2011),
+        ("G1762", 2016),
+        ("G2139", 2020),
+        ("G2296", 2022),
+    ];
+    for (code, year) in g_code_years {
+        if name.contains(code) {
+            return Some(*year);
+        }
     }
     None
 }

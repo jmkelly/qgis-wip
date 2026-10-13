@@ -150,9 +150,6 @@ async fn ogc_handler(
             Response::builder()
                 .status(status)
                 .header("Content-Type", content_type)
-            Response::builder()
-                .status(status)
-                .header("Content-Type", "application/xml")
                 .body(Body::from(response.body))
                 .unwrap()
         }

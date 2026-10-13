@@ -180,29 +180,18 @@ enum Token {
 }
 
 /// Tokenizer for WKT2:2019 strings.
-<<<<<<< HEAD
-=======
 ///
 /// Owns the input as a `Vec<char>` so the parser can hold it without
 /// lifetime issues.
->>>>>>> qgis-qxu-5
 struct Lexer {
     input: Vec<char>,
     pos: usize,
 }
 
-<<<<<<< HEAD
-impl<'a> Lexer<'a> {
-    fn new(input: &'a str) -> Self {
-        let chars: &'a [char] = Box::leak(input.chars().collect::<Vec<_>>().into_boxed_slice());
-        Self {
-            input: chars,
-=======
 impl Lexer {
     fn new(input: &str) -> Self {
         Self {
             input: input.chars().collect(),
->>>>>>> qgis-qxu-5
             pos: 0,
         }
     }
@@ -410,12 +399,8 @@ impl Wkt2Parser {
             Some(Token::Word(w)) => {
                 let wt = w.to_uppercase();
                 match wt.as_str() {
-<<<<<<< HEAD
-                    "GEOGCRS" | "PROJCRS" | "GEODCRS" | "VERTCRS" | "COMPD_CS" | "BASEGEOGCRS" => {
-=======
                     "GEOGCRS" | "PROJCRS" | "GEODCRS" | "VERTCRS" | "COMPD_CS"
                     | "BASEGEOGCRS" => {
->>>>>>> qgis-qxu-5
                         self.current = self.lexer.next_token()?;
                         wt
                     }
@@ -430,12 +415,8 @@ impl Wkt2Parser {
             Some(Token::StringLiteral(s)) => {
                 let wt = s.to_uppercase();
                 match wt.as_str() {
-<<<<<<< HEAD
-                    "GEOGCRS" | "PROJCRS" | "GEODCRS" | "VERTCRS" | "COMPD_CS" | "BASEGEOGCRS" => {
-=======
                     "GEOGCRS" | "PROJCRS" | "GEODCRS" | "VERTCRS" | "COMPD_CS"
                     | "BASEGEOGCRS" => {
->>>>>>> qgis-qxu-5
                         self.current = self.lexer.next_token()?;
                         wt
                     }
@@ -511,29 +492,22 @@ impl Wkt2Parser {
             }
             "GEOGCRS" | "GEODCRS" | "BASEGEOGCRS" => {
                 self.expect_comma()?;
-<<<<<<< HEAD
-                parsed.datum = Some(self.parse_datum()?);
-=======
                 // Parse datum, ensemble, or vertical datum
                 parsed.datum = Some(self.parse_datum_or_ensemble()?);
 
->>>>>>> qgis-qxu-5
                 self.expect_comma()?;
                 parsed.prime_meridian = Some(self.parse_prime_meridian()?);
-                self.expect_comma()?;
-                parsed.cs = Some(self.parse_cs()?);
-<<<<<<< HEAD
-                parsed.id = self.parse_optional_id()?;
-            }
-            "VERTCRS" => {
-                self.expect_comma()?;
-                parsed.datum = Some(self.parse_datum()?);
-=======
+
+                // BASEGEOGCRS has no CS node — it's just a reference to the
+                // datum and prime meridian. GEOGCRS/GEODCRS have a CS node.
+                if parsed.crs_type != "BASEGEOGCRS" {
+                    self.expect_comma()?;
+                    parsed.cs = Some(self.parse_cs()?);
+                }
 
                 // Optional ID (not present on BASEGEOGCRS)
-                if parsed.crs_type != "BASEGEOGCRS" && self.current == Some(Token::Comma) {
-                    self.expect_comma()?;
-                    parsed.id = Some(self.parse_id()?);
+                if parsed.crs_type != "BASEGEOGCRS" {
+                    parsed.id = self.parse_optional_id()?;
                 }
             }
             "VERTCRS" => {
@@ -541,7 +515,6 @@ impl Wkt2Parser {
                 // Parse vertical datum (VDATUM) or ensemble
                 parsed.datum = Some(self.parse_vdatum()?);
 
->>>>>>> qgis-qxu-5
                 self.expect_comma()?;
                 parsed.cs = Some(self.parse_cs()?);
                 parsed.id = self.parse_optional_id()?;
@@ -680,7 +653,8 @@ impl Wkt2Parser {
     fn parse_datum_or_ensemble(&mut self) -> Result<Datum, Wkt2Error> {
         match self.current.take() {
             Some(Token::Word(ref w)) if w.eq_ignore_ascii_case("DATUM") => {
-                self.current = self.lexer.next_token()?;
+                // Don't consume the token here — parse_datum expects to see it
+                self.current = Some(Token::Word(w.clone()));
                 self.parse_datum()
             }
             Some(Token::Word(ref w)) if w.eq_ignore_ascii_case("ENSEMBLE") => {
@@ -752,12 +726,21 @@ impl Wkt2Parser {
 
         let mut members = Vec::new();
         loop {
-            self.expect_comma()?;
-            let member = self.parse_ensemble_member()?;
-            members.push(member);
+            // Consume the comma before each MEMBER
             if self.current != Some(Token::Comma) {
                 break;
             }
+            self.expect_comma()?;
+            // Peek ahead: only continue if the next token is MEMBER
+            if let Some(Token::Word(ref w)) = self.current {
+                if !w.eq_ignore_ascii_case("MEMBER") {
+                    break;
+                }
+            } else {
+                break;
+            }
+            let member = self.parse_ensemble_member()?;
+            members.push(member);
         }
 
         // After MEMBER nodes, there may be an ELLIPSOID node before the accuracy.
@@ -768,26 +751,37 @@ impl Wkt2Parser {
             }
         }
 
+        // Parse ENSEMBLEACCURACY node (contains the accuracy value)
         self.expect_comma()?;
-        let accuracy = match self.current.take() {
-            Some(Token::Number(n)) => {
+        let accuracy = if let Some(Token::Word(ref w)) = self.current {
+            if w.eq_ignore_ascii_case("ENSEMBLEACCURACY") {
                 self.current = self.lexer.next_token()?;
-                n
+                self.expect_bracket(true)?;
+                let accuracy = match self.current.take() {
+                    Some(Token::Number(n)) => {
+                        self.current = self.lexer.next_token()?;
+                        n
+                    }
+                    _ => return Err(Wkt2Error::UnexpectedEof),
+                };
+                // Skip optional ID inside ENSEMBLEACCURACY
+                if self.current == Some(Token::Comma) {
+                    self.expect_comma()?;
+                    let _ = self.parse_id()?;
+                }
+                self.expect_bracket(false)?;
+                accuracy
+            } else {
+                return Err(Wkt2Error::ExpectedToken {
+                    token: "ENSEMBLEACCURACY".to_string(),
+                    pos: self.lexer.pos,
+                });
             }
-            _ => return Err(Wkt2Error::UnexpectedEof),
+        } else {
+            return Err(Wkt2Error::UnexpectedEof);
         };
 
-        // Skip ENSEMBLEACCURACY node that may follow
-        if self.current == Some(Token::Comma) {
-            self.expect_comma()?;
-            if let Some(Token::Word(ref w)) = self.current {
-                if w.eq_ignore_ascii_case("ENSEMBLEACCURACY") {
-                    self.current = self.lexer.next_token()?;
-                    self.skip_balanced_node()?;
-                }
-            }
-        }
-
+        // Skip optional ID after ENSEMBLEACCURACY
         if self.current == Some(Token::Comma) {
             self.expect_comma()?;
             let _ = self.parse_id()?;
@@ -803,6 +797,7 @@ impl Wkt2Parser {
     }
 
     fn parse_ensemble_member(&mut self) -> Result<EnsembleMember, Wkt2Error> {
+        self.expect_word("MEMBER")?;
         self.expect_bracket(true)?;
 
         let name = match self.current.take() {

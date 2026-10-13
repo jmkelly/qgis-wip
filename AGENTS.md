@@ -126,3 +126,41 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
+
+## Verification Infrastructure
+
+This project has a composable verification CLI at `./verify` and an OpenCode skill
+at `.opencode/skills/verify-qgis/`. Use them to prove behavior — never chain `cargo`
+commands ad-hoc in a prompt.
+
+```bash
+./verify test [--crate <name>]     # scoped or full workspace tests
+./verify clippy [--crate <name>]    # clippy -D warnings
+./verify oracle                     # verify all goldens
+./verify diff <fixture> [--cpp]     # rust vs golden (or vs C++)
+./verify bench [--run]              # compile (or run) benchmarks
+./verify doctor                     # environment health check
+./verify all [--geiger]             # everything
+```
+
+### Evidence rules
+
+1. "It compiles" is not evidence — run the gate and show output.
+2. Match the check to the change: parser change replays fixtures, perf change
+   shows before/after, storage change reads back the value.
+3. Show artifacts (test output, oracle diff, benchmark numbers) — an artifact
+   beats a plausible explanation.
+4. If a check can't run, say "inconclusive" — don't guess.
+5. A confident reply without evidence is a red flag.
+
+### Feature map
+
+Each crate's features and their evidence live in
+`.opencode/skills/verify-qgis/features/`. Read the relevant file before
+verifying a change in that crate.
+
+### Benchmark vetting
+
+Before reporting any performance number, run through the checklist in
+`.opencode/skills/verify-qgis/SKILL.md` under "Benchmark vetting". Verdict:
+faster, slower, no measurable difference, or inconclusive.

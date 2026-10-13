@@ -68,12 +68,8 @@ impl CrsTransform {
     ///
     /// Returns [`TransformError::UnknownEpsgCode`] if the code is not in the dataset.
     pub fn from_epsg(epsg: i32) -> Result<Self, TransformError> {
-<<<<<<< HEAD
         let code = u16::try_from(epsg).map_err(|_| TransformError::UnknownEpsgCode(epsg))?;
         let proj_string = crs_definitions::from_code(code)
-=======
-        let proj_string = crs_definitions::from_code(epsg as u16)
->>>>>>> qgis-qxu-5
             .ok_or(TransformError::UnknownEpsgCode(epsg))?
             .proj4
             .to_string();
@@ -98,33 +94,18 @@ impl CrsTransform {
         target: &CrsTransform,
     ) -> Result<(f64, f64), TransformError> {
         // Convert degrees to radians for proj4rs
-<<<<<<< HEAD
         let mut point = (x.to_radians(), y.to_radians());
-
 
         proj4rs::transform::transform(
             &self.inner,
             &target.inner,
             &mut point,
-=======
-        let mut xy = (x.to_radians(), y.to_radians());
-
-        proj4rs::transform::transform(
-            &self.inner,
-            &target.inner,
-            &mut xy,
->>>>>>> qgis-qxu-5
         ).map_err(|e| TransformError::TransformFailed {
             reason: e.to_string(),
         })?;
-        let (x_out_rad, y_out_rad) = point;
 
         // Convert radians back to degrees
-<<<<<<< HEAD
         Ok((point.0.to_degrees(), point.1.to_degrees()))
-=======
-        Ok((xy.0.to_degrees(), xy.1.to_degrees()))
->>>>>>> qgis-qxu-5
     }
 
     /// Transforms a point in-place from this CRS to another CRS.
@@ -180,5 +161,71 @@ mod tests {
         wgs84.transform_point_mut(&mut point, &web_merc).unwrap();
         assert!((point.0 - 0.0).abs() < 1e-9);
         assert!((point.1 - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn from_epsg_nad83() {
+        let transform = CrsTransform::from_epsg(4269);
+        assert!(transform.is_ok(), "failed: {:?}", transform.err());
+    }
+
+    #[test]
+    fn from_epsg_utm_zone_33n() {
+        let transform = CrsTransform::from_epsg(32633);
+        assert!(transform.is_ok(), "failed: {:?}", transform.err());
+    }
+
+    #[test]
+    fn from_epsg_etrs89_utm_zone_32n() {
+        let transform = CrsTransform::from_epsg(25832);
+        assert!(transform.is_ok(), "failed: {:?}", transform.err());
+    }
+
+    #[test]
+    fn from_epsg_etrs89_laea_europe() {
+        let transform = CrsTransform::from_epsg(3035);
+        assert!(transform.is_ok(), "failed: {:?}", transform.err());
+    }
+
+    #[test]
+    fn from_epsg_rgf93_lambert_93() {
+        let transform = CrsTransform::from_epsg(2154);
+        assert!(transform.is_ok(), "failed: {:?}", transform.err());
+    }
+
+    #[test]
+    fn from_epsg_wgs84_3d_geographic() {
+        let transform = CrsTransform::from_epsg(4979);
+        assert!(transform.is_ok(), "failed: {:?}", transform.err());
+    }
+
+    #[test]
+    fn from_epsg_wgs84_geocentric() {
+        let transform = CrsTransform::from_epsg(4978);
+        assert!(transform.is_ok(), "failed: {:?}", transform.err());
+    }
+
+    #[test]
+    fn from_epsg_nad83_to_wgs84() {
+        let nad83 = CrsTransform::from_epsg(4269).unwrap();
+        let wgs84 = CrsTransform::from_epsg(4326).unwrap();
+        let mut point = (-122.0, 37.0);
+        nad83.transform_point_mut(&mut point, &wgs84).unwrap();
+        // NAD83 to WGS84 should be very close (sub-meter)
+        assert!((point.0 - -122.0).abs() < 0.01);
+        assert!((point.1 - 37.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn from_epsg_web_mercator_to_wgs84_roundtrip() {
+        let wgs84 = CrsTransform::from_epsg(4326).unwrap();
+        let web_merc = CrsTransform::from_epsg(3857).unwrap();
+        let original = (10.0, 50.0);
+        let mut projected = original;
+        wgs84.transform_point_mut(&mut projected, &web_merc).unwrap();
+        let mut recovered = projected;
+        web_merc.transform_point_mut(&mut recovered, &wgs84).unwrap();
+        assert!((recovered.0 - original.0).abs() < 1e-6);
+        assert!((recovered.1 - original.1).abs() < 1e-6);
     }
 }

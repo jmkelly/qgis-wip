@@ -152,7 +152,6 @@ pub fn route(request: &FcgiRequest) -> Result<FcgiResponse> {
 
 /// Generates an OGC ServiceException report.
 pub fn service_exception(code: &str, message: impl Into<String>) -> FcgiResponse {
-fn service_exception(code: &str, message: &str) -> FcgiResponse {
     let body = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <ServiceExceptionReport version="1.3.0" xmlns="http://www.opengis.net/ogc">
@@ -160,7 +159,6 @@ fn service_exception(code: &str, message: &str) -> FcgiResponse {
 </ServiceExceptionReport>"#,
         code,
         message.into()
-        code, message
     );
     FcgiResponse::new(Bytes::from(body))
 }

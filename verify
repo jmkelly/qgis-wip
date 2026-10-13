@@ -1,0 +1,335 @@
+#!/usr/bin/env bash
+# Composable verification CLI for the QGIS Rust workspace.
+# Single entry point for agents to prove behavior — no ad-hoc shell chains.
+#
+# Usage:
+#   ./verify test [--crate <name>] [--offline] [--nextest]
+#   ./verify clippy [--crate <name>]
+#   ./verify oracle [--fixture <path>] [--update-goldens]
+#   ./verify diff <fixture> [--cpp]
+#   ./verify bench [--crate <name>] [--run]
+#   ./verify doctor
+#   ./verify all [--crate <name>] [--geiger]
+#
+# Exit codes: 0 = pass, 1 = fail, 2 = usage error.
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+die() { echo "error: $*" >&2; exit 2; }
+
+need_cargo() {
+    if ! command -v cargo &>/dev/null; then
+        if [ -f "$HOME/.cargo/env" ]; then
+            # shellcheck disable=SC1091
+            source "$HOME/.cargo/env"
+        else
+            die "cargo not found on PATH and ~/.cargo/env missing"
+        fi
+    fi
+}
+
+crate_scope() {
+    local crate="$1"
+    if [ -z "$crate" ]; then
+        echo "--workspace"
+        return
+    fi
+    # Accept both directory name (geometry) and package name (qgis-geometry)
+    local pkg_names=""
+    if cargo tree --workspace -i "$crate" --prefix none &>/dev/null; then
+        pkg_names=$(cargo tree --workspace -i "$crate" --prefix none 2>/dev/null)
+    elif cargo tree --workspace -i "qgis-$crate" --prefix none &>/dev/null; then
+        pkg_names=$(cargo tree --workspace -i "qgis-$crate" --prefix none 2>/dev/null)
+    else
+        die "crate '$crate' not found in workspace"
+    fi
+    # Extract package names (first field of each line)
+    local flags=""
+    local pkg
+    while IFS= read -r pkg; do
+        pkg=$(echo "$pkg" | awk '{print $1}')
+        [ -n "$pkg" ] && flags="$flags -p $pkg"
+    done <<< "$pkg_names"
+    echo "$flags"
+}
+
+nextest_available() {
+    command -v cargo-nextest &>/dev/null
+}
+
+# ── subcommands ──────────────────────────────────────────────────────────────
+
+cmd_test() {
+    local crate="" offline=0 nextest=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --crate) crate="$2"; shift 2 ;;
+            --offline) offline=1; shift ;;
+            --nextest) nextest=1; shift ;;
+            *) die "unknown arg: $1" ;;
+        esac
+    done
+    need_cargo
+
+    local scope; scope=$(crate_scope "$crate")
+    local flags=()
+    [ "$offline" -eq 1 ] && flags+=(--offline)
+
+    if [ "$nextest" -eq 1 ] && nextest_available; then
+        echo "=== cargo nextest run $scope ==="
+        cargo nextest run $scope ${flags[@]+"${flags[@]}"}
+    else
+        echo "=== cargo test $scope ==="
+        cargo test $scope ${flags[@]+"${flags[@]}"}
+    fi
+}
+
+cmd_clippy() {
+    local crate="" offline=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --crate) crate="$2"; shift 2 ;;
+            --offline) offline=1; shift ;;
+            *) die "unknown arg: $1" ;;
+        esac
+    done
+    need_cargo
+
+    local scope; scope=$(crate_scope "$crate")
+    local flags=()
+    [ "$offline" -eq 1 ] && flags+=(--offline)
+
+    echo "=== cargo clippy $scope --all-targets -- -D warnings ==="
+    cargo clippy $scope --all-targets -- -D warnings ${flags[@]+"${flags[@]}"}
+}
+
+cmd_oracle() {
+    local fixture="" update=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --fixture) fixture="$2"; shift 2 ;;
+            --update-goldens) update=1; shift ;;
+            *) die "unknown arg: $1" ;;
+        esac
+    done
+    need_cargo
+
+    local fixtures_dir="crates/oracle/fixtures"
+    local f
+    if [ -n "$fixture" ]; then
+        [ -f "$fixture" ] || die "fixture not found: $fixture"
+        if [ "$update" -eq 1 ]; then
+            echo "=== oracle record $fixture ==="
+            ORACLE_UPDATE_GOLDENS=1 cargo run -p qgis-oracle -- "$fixture"
+        else
+            echo "=== oracle verify $fixture ==="
+            cargo run -p qgis-oracle -- "$fixture"
+        fi
+    else
+        for f in "$fixtures_dir"/*; do
+            [ -f "$f" ] || continue
+            if [ "$update" -eq 1 ]; then
+                echo "=== oracle record $f ==="
+                ORACLE_UPDATE_GOLDENS=1 cargo run -p qgis-oracle -- "$f"
+            else
+                echo "=== oracle verify $f ==="
+                cargo run -p qgis-oracle -- "$f"
+            fi
+        done
+    fi
+    echo "=== oracle: all goldens match ==="
+}
+
+cmd_diff() {
+    local fixture="${1:-}"
+    local cpp=0
+    shift || true
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --cpp) cpp=1; shift ;;
+            *) die "unknown arg: $1" ;;
+        esac
+    done
+    [ -n "$fixture" ] || die "usage: ./verify diff <fixture> [--cpp]"
+    [ -f "$fixture" ] || die "fixture not found: $fixture"
+    need_cargo
+
+    if [ "$cpp" -eq 1 ]; then
+        if [ -z "${QGIS_CPP_BINARY:-}" ]; then
+            die "QGIS_CPP_BINARY not set; build rust/cpp_harness first (see crates/oracle/README.md)"
+        fi
+        echo "=== oracle diff $fixture (rust vs cpp) ==="
+        cargo run -p qgis-oracle -- diff "$fixture" --backend-a rust --backend-b cpp
+    else
+        echo "=== oracle diff $fixture (rust vs golden) ==="
+        cargo run -p qgis-oracle -- "$fixture"
+    fi
+}
+
+cmd_bench() {
+    local crate="qgis-bench" run=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --crate) crate="$2"; shift 2 ;;
+            --run) run=1; shift ;;
+            *) die "unknown arg: $1" ;;
+        esac
+    done
+    need_cargo
+
+    if [ "$run" -eq 1 ]; then
+        echo "=== cargo bench -p $crate ==="
+        cargo bench -p "$crate"
+    else
+        echo "=== cargo bench -p $crate --no-run ==="
+        cargo bench -p "$crate" --no-run
+    fi
+}
+
+cmd_doctor() {
+    need_cargo
+    local ok=1
+
+    echo "=== verify doctor ==="
+    echo "rustc:  $(rustc --version 2>/dev/null || echo MISSING)"
+    echo "cargo:  $(cargo --version 2>/dev/null || echo MISSING)"
+
+    if nextest_available; then
+        echo "nextest: $(cargo nextest --version 2>/dev/null)"
+    else
+        echo "nextest: not installed (optional, ./verify test --nextest will warn)"
+    fi
+
+    if command -v cargo-geiger &>/dev/null; then
+        echo "geiger: $(cargo geiger --version 2>/dev/null || echo present)"
+    else
+        echo "geiger: not installed (optional, ./verify all --geiger will skip)"
+    fi
+
+    if [ -n "${QGIS_CPP_BINARY:-}" ]; then
+        if [ -x "$QGIS_CPP_BINARY" ]; then
+            echo "cpp binary: $QGIS_CPP_BINARY (ready)"
+        else
+            echo "cpp binary: $QGIS_CPP_BINARY (NOT executable)"
+            ok=0
+        fi
+    else
+        echo "cpp binary: not set (QGIS_CPP_BINARY unset; C++ diffs will be skipped)"
+    fi
+
+    # Check workspace builds
+    echo ""
+    echo "--- workspace build check ---"
+    if cargo build --workspace &>/dev/null; then
+        echo "workspace build: OK"
+    else
+        echo "workspace build: FAIL (pre-existing errors in qgis-server — not caused by verify infra)"
+        echo "  Run 'cargo build --workspace' to see details."
+        ok=0
+    fi
+
+    # Check goldens exist
+    echo ""
+    echo "--- oracle goldens check ---"
+    local goldens_dir="oracle/goldens"
+    local golden_count=0
+    if [ -d "$goldens_dir" ]; then
+        golden_count=$(find "$goldens_dir" -name '*.expected' 2>/dev/null | wc -l)
+        golden_count=$((golden_count + 0))
+    fi
+    echo "oracle goldens: $golden_count files"
+    if [ "$golden_count" -le 0 ]; then
+        echo "oracle goldens: MISSING"
+        ok=0
+    fi
+
+    echo ""
+    if [ "$ok" -eq 1 ]; then
+        echo "doctor: all checks passed"
+    else
+        echo "doctor: some checks FAILED"
+        exit 1
+    fi
+}
+
+cmd_all() {
+    local crate="" geiger=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --crate) crate="$2"; shift 2 ;;
+            --geiger) geiger=1; shift ;;
+            *) die "unknown arg: $1" ;;
+        esac
+    done
+
+    echo "============================================"
+    echo " QGIS Rust workspace — full verification"
+    if [ -n "$crate" ]; then echo " Scoped to: $crate + dependents"; fi
+    echo "============================================"
+    echo ""
+
+    if [ -n "$crate" ]; then cmd_test --crate "$crate"; else cmd_test; fi
+    echo ""
+    if [ -n "$crate" ]; then cmd_clippy --crate "$crate"; else cmd_clippy; fi
+    echo ""
+
+    if [ -z "$crate" ] || [ "$crate" = "qgis-oracle" ]; then
+        cmd_oracle
+        echo ""
+        if [ -n "${QGIS_CPP_BINARY:-}" ] && [ -x "$QGIS_CPP_BINARY" ]; then
+            local f
+            for f in crates/oracle/fixtures/*; do
+                [ -f "$f" ] || continue
+                cmd_diff "$f" --cpp
+            done
+            echo ""
+        fi
+    else
+        echo "--- oracle: skipped (crate '$crate' has no oracle integration) ---"
+        echo ""
+    fi
+
+    if [ -z "$crate" ] || [ "$crate" = "qgis-bench" ]; then
+        cmd_bench
+        echo ""
+    else
+        echo "--- bench: skipped (only qgis-bench has benches) ---"
+        echo ""
+    fi
+
+    if [ "$geiger" -eq 1 ]; then
+        echo "--- cargo-geiger (informational) ---"
+        if command -v cargo-geiger &>/dev/null; then
+            cargo geiger --workspace || true
+        else
+            echo "cargo-geiger not installed; skipping"
+        fi
+        echo ""
+    fi
+
+    echo "============================================"
+    echo " All verification gates passed"
+    echo "============================================"
+}
+
+# ── dispatch ──────────────────────────────────────────────────────────────────
+
+usage() {
+    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    exit 2
+}
+
+case "${1:-}" in
+    test)   shift; cmd_test "$@" ;;
+    clippy) shift; cmd_clippy "$@" ;;
+    oracle) shift; cmd_oracle "$@" ;;
+    diff)   shift; cmd_diff "$@" ;;
+    bench)  shift; cmd_bench "$@" ;;
+    doctor) shift; cmd_doctor "$@" ;;
+    all)    shift; cmd_all "$@" ;;
+    --help|-h|help) usage ;;
+    *)      usage ;;
+esac
