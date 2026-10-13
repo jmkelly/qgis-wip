@@ -5,7 +5,8 @@ pub enum ResampleAlg { Nearest, Bilinear, Cubic, CubicSpline, Lanczos, Average, 
 
 impl ResampleAlg {
     pub fn parse_alg(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+        match s.to_lowercase().replace(" ", "").as_str() {
+            "nearest" | "nearestneighbour" | "nearestneighbor" | "nn" => Self::Nearest,
             "bilinear" => Self::Bilinear,
             "cubic" => Self::Cubic,
             "cubicspline" => Self::CubicSpline,
@@ -163,6 +164,22 @@ mod tests {
     }
     #[test]
     fn kernels() {
+        for alg in [ResampleAlg::Nearest, ResampleAlg::Bilinear, ResampleAlg::Cubic,
+                    ResampleAlg::CubicSpline, ResampleAlg::Lanczos, ResampleAlg::Average,
+                    ResampleAlg::Mode, ResampleAlg::Sum] {
+            assert!(kernel_weight(alg,0.0) >= 0.0);
+            assert!(kernel_weight(alg,10.0).abs() < 1e-12 || kernel_weight(alg,10.0)==0.0);
+        }
         assert!(kernel_weight(ResampleAlg::Nearest,0.0) > 0.5);
+    }
+    #[test]
+    fn parse_alg_all() {
+        assert_eq!(ResampleAlg::parse_alg("bilinear"), ResampleAlg::Bilinear);
+        assert_eq!(ResampleAlg::parse_alg("cubic"), ResampleAlg::Cubic);
+        assert_eq!(ResampleAlg::parse_alg("cubicspline"), ResampleAlg::CubicSpline);
+        assert_eq!(ResampleAlg::parse_alg("lanczos"), ResampleAlg::Lanczos);
+        assert_eq!(ResampleAlg::parse_alg("average"), ResampleAlg::Average);
+        assert_eq!(ResampleAlg::parse_alg("mode"), ResampleAlg::Mode);
+        assert_eq!(ResampleAlg::parse_alg("sum"), ResampleAlg::Sum);
     }
 }
