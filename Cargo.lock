@@ -3119,6 +3119,7 @@ dependencies = [
 name = "qgis-expression"
 version = "0.1.0"
 dependencies = [
+ "qgis-geometry",
  "regex",
 ]
 

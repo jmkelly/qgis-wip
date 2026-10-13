@@ -7,3 +7,4 @@ description = "Expression engine for QGIS Rust port (replacing Qwt-expression)"
 
 [dependencies]
 regex = { workspace = true }
+qgis-geometry = { path = "../geometry" }

@@ -6,6 +6,7 @@
 pub mod conditional;
 pub mod date_array;
 pub mod scalar;
+pub mod spatial;
 pub mod string;
 
 use crate::ast::Literal;
@@ -21,6 +22,7 @@ pub fn lookup(name: &str) -> Option<FunctionFn> {
         .or_else(|| conditional::lookup(&lower))
         .or_else(|| scalar::lookup(&lower))
         .or_else(|| date_array::lookup(&lower))
+        .or_else(|| spatial::lookup(&lower))
 }
 
 /// Call a function by name with evaluated arguments.
@@ -38,6 +40,7 @@ pub fn arity_description(name: &str) -> Option<&'static str> {
         .or_else(|| conditional::arity(&lower))
         .or_else(|| scalar::arity(&lower))
         .or_else(|| date_array::arity(&lower))
+        .or_else(|| spatial::arity(&lower))
 }
 
 #[cfg(test)]
