@@ -57,6 +57,67 @@ fn make_point(args: &[Literal]) -> Result<Literal, EvalError> {
     }
 }
 
+// constructors helpers
+fn parse_number(l: &Literal) -> Result<f64, EvalError> {
+    match l { Literal::Integer(i)=>Ok(*i as f64), Literal::Float(f)=>Ok(*f), _=>Err(EvalError::TypeError{function:"".into(),message:"number".into()}) }
+}
+fn parse_point_literal(l: &Literal) -> Result<Point, EvalError> {
+    let g = parse_geom(l)?;
+    match g { Geometry::Point(p)=>Ok(p), _=>Err(EvalError::TypeError{function:"".into(),message:"point geometry".into()}) }
+}
+use qgis_geometry::Point;
+
+fn make_line(args: &[Literal]) -> Result<Literal, EvalError> {
+    let mut pts: Vec<Point> = Vec::new();
+    if args.len() == 1 {
+        if let Literal::Array(arr)=&args[0] {
+            for item in arr { pts.push(parse_point_literal(item)?); }
+        } else {
+            return Err(EvalError::TypeError{function:"".into(),message:"array of points".into()});
+        }
+    } else {
+        for a in args { pts.push(parse_point_literal(a)?); }
+    }
+    Ok(Literal::Str(format!("LINESTRING({})", pts.iter().map(|p| format!("{} {}", p.x(), p.y())).collect::<Vec<_>>().join(", "))))
+}
+
+fn make_polygon(args: &[Literal]) -> Result<Literal, EvalError> {
+    // args: array of rings, each ring array of points; or single array containing rings
+    let rings_arg = if args.len()==1 && matches!(&args[0], Literal::Array(_)) { &args[0] } else { return Err(EvalError::ArityError{function:"".into(),expected:"1 array of rings".into(),got:args.len()}); };
+    let Literal::Array(rings)=rings_arg else { unreachable!() };
+    let mut ring_strs=Vec::new();
+    for ring in rings {
+        let Literal::Array(pts)=ring else { return Err(EvalError::TypeError{function:"".into(),message:"ring array".into()}); };
+        let mut coords=Vec::new();
+        for pt in pts { let p=parse_point_literal(pt)?; coords.push(format!("{} {}", p.x(), p.y())); }
+        ring_strs.push(format!("({})", coords.join(", ")));
+    }
+    Ok(Literal::Str(format!("POLYGON({})", ring_strs.join(", "))))
+}
+
+fn geom_from_geojson(args: &[Literal]) -> Result<Literal, EvalError> {
+    if args.len()!=1 { return Err(EvalError::ArityError{function:"".into(),expected:"exactly 1".into(),got:args.len()}); }
+    let s = as_str(&args[0])?;
+    // naive: if it contains "coordinates", parse point/linestring/polygon by extracting numbers
+    // handle Point
+    if s.contains("\"Point\"") {
+        // extract two numbers after coordinates
+        let nums = extract_numbers(&s);
+        if nums.len()>=2 { return Ok(Literal::Str(format!("POINT({} {})", nums[0], nums[1]))); }
+    }
+    if s.contains("\"LineString\"") {
+        // coordinates: [[x,y],...]
+        return Ok(Literal::Str(format!("LINESTRING({})", parse_coord_pairs(&s).join(", "))));
+    }
+    if s.contains("\"Polygon\"") {
+        // first ring
+        // too complex; fall through to WKT parse attempt
+    }
+    // fallback try wkt
+    let g = parse_geom(&Literal::Str(s))?; // will likely fail
+    Ok(geom_to_literal(g))
+}
+
 // measurements
 fn x_coord(args: &[Literal]) -> Result<Literal, EvalError> {
     let g = parse_geom(&args[0])?;
@@ -94,6 +155,52 @@ fn length(args: &[Literal]) -> Result<Literal, EvalError> {
     let g = parse_geom(&args[0])?;
     let l = match &g { Geometry::LineString(ls)=>ls.length(), _=>0.0};
     Ok(numeric_measure(l))
+}
+
+fn distance(args: &[Literal]) -> Result<Literal, EvalError> {
+    if args.len()<2 { return Err(EvalError::ArityError{function:"".into(),expected:"exactly 2".into(),got:args.len()}); }
+    let a=parse_geom(&args[0])?; let b=parse_geom(&args[1])?;
+    let pa=collect_points(&a); let pb=collect_points(&b);
+    let mut min=f64::INFINITY;
+    for p in &pa { for q in &pb { let d=p.distance(q); if d<min { min=d; } } }
+    if min.is_infinite() { min=0.0; }
+    Ok(numeric_measure(min))
+}
+fn collect_points(g: &Geometry) -> Vec<Point> {
+    match g {
+        Geometry::Point(p)=>vec![p.clone()],
+        Geometry::LineString(ls)=>ls.points().to_vec(),
+        Geometry::Polygon(pg)=>{ let mut v=pg.exterior().to_vec(); for h in pg.interiors() { v.extend(h.clone()); } v }
+        Geometry::MultiPoint(mp)=>mp.points().to_vec(),
+        Geometry::MultiLineString(ml)=>ml.lines().iter().flat_map(|l| l.points().to_vec()).collect(),
+        Geometry::MultiPolygon(mp)=>mp.polygons().iter().flat_map(|pg|{ let mut v=pg.exterior().to_vec(); for h in pg.interiors(){v.extend(h.clone());} v}).collect(),
+        Geometry::GeometryCollection(gc)=>gc.geometries().iter().flat_map(collect_points).collect(),
+    }
+}
+fn num_points(args: &[Literal]) -> Result<Literal, EvalError> {
+    let g=parse_geom(&args[0])?;
+    Ok(Literal::Integer(collect_points(&g).len() as i64))
+}
+fn num_rings(args: &[Literal]) -> Result<Literal, EvalError> {
+    let g=parse_geom(&args[0])?;
+    match g {
+        Geometry::Polygon(pg)=>Ok(Literal::Integer((1+pg.interiors().len()) as i64)),
+        _=>Ok(Literal::Integer(0)),
+    }
+}
+fn geometry_n(args: &[Literal]) -> Result<Literal, EvalError> {
+    if args.len()<2 { return Err(EvalError::ArityError{function:"".into(),expected:"exactly 2".into(),got:args.len()}); }
+    let g=parse_geom(&args[0])?;
+    let n=parse_number(&args[1])? as usize;
+    let items: Vec<Geometry> = match g {
+        Geometry::GeometryCollection(gc)=>gc.geometries().to_vec(),
+        Geometry::MultiPoint(mp)=>mp.points().iter().cloned().map(Geometry::Point).collect(),
+        Geometry::MultiLineString(ml)=>ml.lines().iter().cloned().map(Geometry::LineString).collect(),
+        Geometry::MultiPolygon(mp)=>mp.polygons().iter().cloned().map(Geometry::Polygon).collect(),
+        other=>vec![other],
+    };
+    if n==0 || n>items.len() { return Err(EvalError::TypeError{function:"".into(),message:"index out of range".into()}); }
+    Ok(geom_to_literal(items[n-1].clone()))
 }
 
 // transforms
@@ -162,12 +269,44 @@ fn difference(args: &[Literal]) -> Result<Literal, EvalError> {
     Ok(geom_to_literal(qgis_geometry::difference(&a,&b)))
 }
 
+
+
+fn extract_numbers(s: &str) -> Vec<f64> {
+    s.chars().fold((Vec::new(),String::new()), |(mut v,mut cur), c| {
+        if c.is_ascii_digit() || c=='.' || c=='-' || c=='+' || c=='e' || c=='E' {
+            cur.push(c); (v,cur)
+        } else {
+            if !cur.is_empty() { if let Ok(n)=cur.parse::<f64>() { v.push(n);} cur.clear(); }
+            (v,cur)
+        }
+    }).0
+}
+fn parse_coord_pairs(s: &str) -> Vec<String> {
+    // extract pairs from nested arrays crudely
+    let mut res=Vec::new();
+    let nums=extract_numbers(s);
+    let mut i=0;
+    while i+1 < nums.len() {
+        res.push(format!("{} {}", nums[i], nums[i+1]));
+        i+=2;
+    }
+    res
+}
+
 pub fn lookup(name: &str) -> Option<super::FunctionFn> {
     let f = match name {
         "geom_from_wkt" | "st_geomfromwkt" | "geom_from_wkb" => geom_from_wkt as super::FunctionFn,
+        "geom_from_geojson" | "st_geomfromgeojson" => geom_from_geojson as super::FunctionFn,
         "geom_to_wkt" | "st_astext" => geom_from_wkt as super::FunctionFn,
         "make_point" => make_point as super::FunctionFn,
+        "make_line" => make_line as super::FunctionFn,
+        "make_polygon" => make_polygon as super::FunctionFn,
         "x" => x_coord as super::FunctionFn,
+        "y" => y_coord as super::FunctionFn,
+        "num_points" => num_points as super::FunctionFn,
+        "num_rings" => num_rings as super::FunctionFn,
+        "geometry_n" => geometry_n as super::FunctionFn,
+        "distance" => distance as super::FunctionFn,
         "y" => y_coord as super::FunctionFn,
         "area" => area as super::FunctionFn,
         "perimeter" => perimeter as super::FunctionFn,
@@ -192,10 +331,11 @@ pub fn lookup(name: &str) -> Option<super::FunctionFn> {
 
 pub fn arity(name: &str) -> Option<&'static str> {
     match name {
-        "geom_from_wkt" | "geom_to_wkt" | "st_astext" | "x" | "y" | "area" | "perimeter" | "length" | "centroid" => Some("exactly 1"),
+        "geom_from_wkt" | "geom_to_wkt" | "st_astext" | "geom_from_geojson" | "x" | "y" | "area" | "perimeter" | "length" | "centroid" | "num_points" | "num_rings" => Some("exactly 1"),
         "make_point" => Some("2 or 3"),
+        "make_line" | "make_polygon" => Some("variadic"),
         "buffer" => Some("at least 2"),
-        "intersects" | "contains" | "touches" | "within" | "crosses" | "overlaps" | "disjoint" | "geom_equals" | "equals" | "intersection" | "union" | "difference" => Some("exactly 2"),
+        "intersects" | "contains" | "touches" | "within" | "crosses" | "overlaps" | "disjoint" | "geom_equals" | "equals" | "intersection" | "union" | "difference" | "distance" | "geometry_n" => Some("exactly 2"),
         _ => None,
     }
 }
