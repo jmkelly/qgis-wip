@@ -34,6 +34,8 @@ impl Provider for PlaceholderProvider {
 }
 
 pub mod dbase;
+pub mod vsi;
+pub mod vrt;
 pub mod shapefile;
 
 #[cfg(test)]

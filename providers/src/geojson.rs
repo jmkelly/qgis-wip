@@ -25,6 +25,10 @@ pub struct FeatureCollection {
     pub features: Vec<Feature>,
 }
 
+impl Default for FeatureCollection {
+    fn default() -> Self { Self::new() }
+}
+
 impl FeatureCollection {
     pub fn new() -> Self { Self { ty: "FeatureCollection".into(), features: vec![] } }
     pub fn to_json(&self) -> Result<String, String> { serde_json::to_string(self).map_err(|e| e.to_string()) }
