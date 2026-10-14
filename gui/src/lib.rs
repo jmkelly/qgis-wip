@@ -2,12 +2,20 @@
 //!
 //! Uses `iced` with shared `wgpu` map/3D viewports, built last after headless
 //! core stabilizes. See ADR-0002 for the GUI toolkit decision.
+//!
+//! The E14 application binary lives in [`app`] and [`main`]; the rendering
+//! pipeline is in [`layer_renderer`] and [`map_canvas`]; the map canvas
+//! program (multi-layer pan/zoom) is in [`map_program`].
 
 #![forbid(unsafe_code)]
 
+pub mod app;
 pub mod attribute_table;
+pub mod dialogs;
+pub mod layer_panel;
 pub mod layer_renderer;
 pub mod map_canvas;
+pub mod map_program;
 pub mod print_layout;
 pub mod style_apply;
 
@@ -19,27 +27,3 @@ pub use layer_renderer::{
     LineRenderer, PointLayerRenderer, PointRenderer, PolygonLayerRenderer, PolygonRenderer,
     VectorLayerRenderer,
 };
-
-/// Application state for the main window.
-#[derive(Debug, Default)]
-pub struct AppState {
-    // Placeholder: will hold map layers, tool state, etc.
-}
-
-impl AppState {
-    /// Creates a new, empty application state.
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn new_state_is_default() {
-        let state = AppState::new();
-        assert_eq!(format!("{:?}", state), "AppState");
-    }
-}
