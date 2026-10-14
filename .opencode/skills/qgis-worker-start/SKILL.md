@@ -6,42 +6,23 @@ agent: opencode
 
 # qgis-worker-start — Worker Bootstrap & Editing Conventions
 
-This skill codifies the standard bootstrap sequence, crate-scoped verification workflow, file-editing rules, and worktree stability practices for worker agents in the QGIS Rust workspace.
+**Source of truth for worker prompt:** [`eng/runbook.md`](../../../eng/runbook.md) § "Worker prompt (verbatim template)"
+
+This skill covers the editing conventions and worktree practices that are
+unique to worker agents. For the full worker prompt template (bootstrap,
+gates, handoff), see `eng/runbook.md`.
 
 ## When to use
 
-Load or follow this skill at the start of any worker task (bead) in the QGIS Rust workspace before touching source files or running builds.
+Load this skill at the start of any worker task (bead) in the QGIS Rust
+workspace before touching source files or running builds.
 
-## 1. Bootstrap Sequence (`bd show` + `bd prime` + read `AGENTS.md`)
+## 1. Bootstrap
 
-Start every session with a single parallel batch to gather full task and repository context:
+The full worker prompt template in `eng/runbook.md` covers the bootstrap
+sequence (`bd show`, `bd prime`, read `AGENTS.md`). Follow that prompt.
 
-1. **Inspect the bead**: Run `bd show <id>` to read the task description, notes, branch/worktree metadata, and exact acceptance criteria.
-2. **Load Beads workflow context**: Run `bd prime` if Beads workflow context is missing or stale.
-3. **Read project instructions**: Read `AGENTS.md` in the workspace root for project conventions, non-interactive shell flags, verification rules, and session completion policies.
-
-```bash
-bd show <id>
-bd prime
-```
-
-Do not guess requirements from the title alone—always check the `ACCEPTANCE CRITERIA` and `NOTES` fields in `bd show <id>`.
-
-## 2. Confirm the Affected Crate & Scoped Verification
-
-Before editing code, identify which workspace crate(s) your bead targets (e.g., `geometry`, `crs`, `expression`, `providers`, `analysis`, `raster`, `mesh`, `pointcloud`, `core`, `style`, `spatial-index`, `server`, `gui`, `pyo3`, `oracle`, `fixtures`, `qgis-bench`).
-
-- Check the crate's feature map in `.opencode/skills/verify-qgis/features/` if one exists.
-- Drive verification through `./verify` scoped to that crate rather than running full-workspace builds during iteration or chaining raw `cargo` commands:
-
-```bash
-./verify test --crate <crate>      # run tests for <crate> and its dependents
-./verify clippy --crate <crate>    # run clippy -D warnings scoped to <crate>
-```
-
-Only escalate to `./verify all` or `./verify oracle` when your change crosses crate boundaries, updates golden fixtures, or when required by final acceptance gates.
-
-## 3. Editing Conventions (Prefer the edit tool for Rust)
+## 2. Editing Conventions (Prefer the edit tool for Rust)
 
 Use the dedicated file tools instead of shell text-manipulation tricks:
 
@@ -52,23 +33,26 @@ Use the dedicated file tools instead of shell text-manipulation tricks:
   - Mechanical bulk renames across many files where single-file `edit` calls would be excessive
 - Always read the target section of a `.rs` file with the `read` tool (or locate symbols with `grep`) immediately before applying `edit`.
 
-## 4. Keep CWD Stable in Worktrees (`git -C <worktree>`)
+## 3. Keep CWD Stable in Worktrees (`git -C <worktree>`)
 
 Worker sessions already start inside their assigned worktree directory (e.g., `/home/james/.paseo/worktrees/.../bd-<id>`). Churning on `cd ~/.paseo/worktrees/...` prefixes in every shell command wastes tokens and risks path mismatches.
 
 - **Keep the session CWD stable**: Rely on the tool harness `workdir` (which defaults to your worktree root) and relative paths for `read`, `edit`, `write`, `./verify`, and `bd` commands.
 - **Use `git -C <worktree>` when running git commands against an explicit worktree path**:
 
-```bash
-git -C <worktree> status
-git -C <worktree> diff
-git -C <worktree> log -n 5 --oneline
-```
+  ```bash
+  git -C <worktree> status
+  git -C <worktree> diff
+  git -C <worktree> log -n 5 --oneline
+  ```
 
 - Avoid chaining `cd /path/to/worktree && ...` in shell commands.
 
-## 5. Handoff & Completion Checklist
+## 4. Verification
 
-1. Run the exact acceptance gate command from `bd show <id>`.
-2. Run `./verify test --crate <crate>` and `./verify clippy --crate <crate>` (when Rust code changed).
-3. Follow the prompt's git and bead instructions (typically do **not** commit to `master` or push; mark the bead with `bd update <id> --add-label needs-merge --append-notes "Done. Branch: bd/<id>"`).
+Drive verification through `./verify` — see the [`verify-qgis` skill](../verify-qgis/SKILL.md)
+for the full command reference and feature maps.
+
+## 5. Handoff
+
+The full handoff procedure is in the worker prompt template in `eng/runbook.md`.

@@ -58,13 +58,14 @@ lists the exact tests and oracle fixtures that prove behavior.
 
 ## Evidence rules
 
-1. **"It compiles" is not evidence.** Run the relevant gate and show output.
-2. **Match the check to the change.** A parser change replays fixtures.
-   A perf change shows before/after. A storage change reads back the value.
-3. **Show artifacts.** Paste the failing test, the oracle diff, or the
-   benchmark output. An artifact beats a plausible explanation.
-4. **If a check can't run, say "inconclusive".** Don't guess.
-5. **A confident reply without evidence is a red flag.**
+See [`AGENTS.md`](../../../AGENTS.md) § "Evidence rules" for the full evidence
+rules. Summary:
+
+1. "It compiles" is not evidence — run the gate and show output.
+2. Match the check to the change.
+3. Show artifacts — an artifact beats a plausible explanation.
+4. If a check can't run, say "inconclusive".
+5. A confident reply without evidence is a red flag.
 
 ## Benchmark vetting
 

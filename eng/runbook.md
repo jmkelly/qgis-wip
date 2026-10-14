@@ -1,5 +1,9 @@
 # Orchestrator runbook — QGIS Rust workspace
 
+**This is the single source of truth** for the coordinator tick steps, cap
+enforcement, stop conditions, and the verbatim worker prompt. Skills and
+schedule prompts reference this file — do not duplicate its content elsewhere.
+
 The maintained home for the coordinator steps and the verbatim worker prompt for
 the QGIS Rust port. Read this first, then `AGENTS.md`, then `bd prime`. Work only
 in the bead queue — do not implement anything yourself; keep implementation in
@@ -21,11 +25,11 @@ This runbook adapts the SpatialEngine swarm pattern to the QGIS Rust workspace:
 | --- | --- |
 | Process epic | `qgis-uic` (velocity / parallelisation) |
 | Port epics | `E0` scaffold … `E9` hardening (see `rust-port-agent-loop.md` §2) |
-| Provider / model | coordinator's default; do not guess — run `paseo list_providers` / `paseo list_models` if you must pin one, and record it in the tick report |
+| Provider / model | `opencode` / `opencode-go/longcat-2.5-preview-free` (pinned for workers; re-check with `paseo list_providers` / `paseo list_models` if a spawn fails) |
 | Mode | none required; the CLI agent runs in its configured mode |
-| Concurrency cap | **3** worker worktrees; ceiling **4** until file-overlap evidence holds for a full drain cycle (the coordinator is not a worktree and does not count) |
-| Cron | every 20 minutes |
-| Max runs | 200 (runaway backstop, ~66 h of ticks — never a target) |
+| Concurrency cap | **6** worker worktrees (the coordinator is not a worktree and does not count) |
+| Cron | `*/5` — every 5 minutes (Australia/Sydney) |
+| Max runs | none — the schedule object is authoritative |
 | Goal | **run to exhaustion** — wave limit is a scheduling fact, not a stopping point |
 | Cwd | repository root (`.`) |
 | Default branch | `master` (this repo; SpatialEngine uses `main`) |
@@ -44,7 +48,7 @@ definition of done.
 
 ## Cap enforcement rules
 
-- The cap is **3 concurrent worker worktrees**. The coordinator runs in the
+- The cap is **6 concurrent worker worktrees**. The coordinator runs in the
   main checkout and never counts toward it.
 - Count the agents *you* spawned — matched by the bead ids in their
   `in-flight` notes and by a worktree under `~/.paseo/worktrees/` — not the
@@ -52,7 +56,7 @@ definition of done.
 - Enforce the cap at the **top of every tick**, not only before spawning: a cap
   checked only at spawn time drifts back up, because every tick re-counts what
   the last tick left running.
-- Over 3, keep the 3 with the most invested work (a committed hand-off, or an
+- Over 6, keep the 6 with the most invested work (a committed hand-off, or an
   unmerged P1 bead, beats a bead that has barely started). For each excess:
   - `paseo stop <agent-id>`;
   - in its worktree: `git add -A && git commit -m "WIP: preserve uncommitted
@@ -67,10 +71,10 @@ definition of done.
 - Shared files (`Cargo.lock`, root `Cargo.toml`, oracle goldens, `fixtures/`
   existing files) are orchestrator-owned; implementers report new dependencies
   and let the orchestrator take the union at merge time.
-- Raise the cap above 4 only once file-overlap evidence has held for a full
+- Raise the cap only once file-overlap evidence has held for a full
   drain cycle and the incident counts (mis-dispatches, WIP-preservation
   commits, non-trivial merge conflicts, reclaim races) are falling.
-- If the box is saturated, prefer merging (step 3) over spawning (step 4).
+- If the box is saturated, prefer merging (step 4) over spawning (step 5).
 
 ---
 
@@ -97,11 +101,38 @@ Re-check after pushing: `git rev-list --count origin/master..master` must again
 be `0`. A tick that did not finish `published: master is at origin/master` did
 something unrecoverable.
 
-### 1. TRIM
+### 1. CLEAN STALE WORKTREES
+
+Run every tick, before any other work — worktrees pile up when this is
+skipped. List the worktree workspaces with `paseo workspace ls`.
+
+For each worktree workspace under `~/.paseo/worktrees/`:
+
+- **Check for a running agent in that worktree, filtered by cwd.** An
+  unfiltered agent listing may omit active agents living in worktree
+  workspaces because of list limits/sorting. Before ANY archive or `rm -rf`,
+  run the agent listing filtered by `cwd=<worktree-path>` (e.g.
+  `paseo_list_agents --cwd <worktree-path>`, and/or `paseo_get_agent_status`
+  on the agent ids recorded in the bead notes). `status=running` means
+  **leave it alone** — never archive or remove a worktree with a running
+  agent.
+- **Check the branch is fully merged** before deleting: `git branch --merged
+  master` (per worktree repo, before `rm -rf`).
+- Merged worktree, no running agent → archive the workspace
+  (`paseo archive workspace <workspace-id>`), remove the directory
+  (`rm -rf <worktree-path>`), and confirm removal (`ls <worktree-path>` must
+  fail).
+- Unmerged worktree, no running agent → if its bead is closed, archive and
+  remove; if the bead is `in_progress` but stale, preserve uncommitted work
+  with a `WIP:` commit first (see TRIM), then archive and remove.
+- Report each cleanup action. If nothing needed cleanup, say `worktree
+  cleanup: all clear`.
+
+### 2. TRIM
 
 Enforce the cap (above) before anything else.
 
-### 2. RECOVER
+### 3. RECOVER
 
 ```bash
 python3 tools/bd-safe-reclaim.py --dry-run
@@ -125,7 +156,7 @@ a stale lease it kills live work.
 - Rehearse against a scratch queue with `--db <path>`, never against the live
   one.
 
-### 3. MERGE
+### 4. MERGE
 
 For every bead labelled `needs-merge`:
 
@@ -153,13 +184,13 @@ mid-tier (providers, analysis, spatial-index, raster, mesh, pointcloud) →
 top-level (server, pyo3, gui, hardening). Batch 2–3 when they do not block each
 other.
 
-### 4. DRAIN
+### 5. DRAIN
 
 Only if the merge queue is empty. Re-read `bd list --label needs-merge`
 immediately before spawning; if anything is still labelled `needs-merge`, spawn
 nothing this tick — a backlog of handed-off work outranks work not yet started.
 
-Count running workers you spawned. While workers < 3:
+Count running workers you spawned. While workers < 6:
 
 - take from `bd ready`, in order:
   1. children of the port epics (E1…E9), then
@@ -201,7 +232,8 @@ paseo workspace create --isolation worktree --mode branch-off \
 - spawn the worker in the background, in its worktree:
 
 ```bash
-paseo run --provider <provider> --thinking medium -d \
+paseo run --provider opencode --model opencode-go/longcat-2.5-preview-free \
+  --thinking medium -d \
   --workspace <workspace-id> "<worker prompt below, BEAD_ID substituted>"
 ```
 
@@ -219,7 +251,7 @@ bd update <id> --add-label in-flight \
 - set the worktree's `CARGO_TARGET_DIR` (record in the note / pass in the
   prompt): `target/<id>` relative to the worktree root.
 
-### 5. REPORT
+### 6. REPORT
 
 One short line per bead touched this tick, plus:
 
@@ -231,7 +263,7 @@ If nothing was ready and nothing is in flight, say **"queue drained"** and stop
 doing work. Do not poll, wait, or sleep — cron brings you back.
 
 Counts to record each drain cycle: mis-dispatches, WIP-preservation commits,
-non-trivial merge conflicts, reclaim races. A cap stays at 4 or below until
+non-trivial merge conflicts, reclaim races. A cap stays at 6 or below until
 those fall over a full cycle.
 
 STOP CONDITIONS (any one, then do nothing more this tick):
@@ -246,6 +278,10 @@ STOP CONDITIONS (any one, then do nothing more this tick):
 ---
 
 ## Worker prompt (verbatim template)
+
+**Verification commands** are documented in the [`verify-qgis` skill](../.opencode/skills/verify-qgis/SKILL.md).
+The commands below are the ones every worker must run; see the skill for the
+full reference and feature maps.
 
 **Substitution rule.** `BEAD_ID` is substituted everywhere it appears. The header
 and the body must carry the *same* id — the header used to be filled from the
