@@ -59,7 +59,7 @@ prompt to the same agent id:
 ```bash
 # one-time setup (human or orchestrator): create the persistent coordinator
 paseo run --provider opencode --model opencode-go/longcat-2.5-preview-free \
-  --thinking medium "You are the swarm coordinator … Read eng/runbook.md …"
+  "You are the swarm coordinator … Read eng/runbook.md …"
 # -> note the returned agent id
 
 # each tick: reuse the same agent instead of spawning a new one
@@ -265,7 +265,7 @@ paseo workspace create --isolation worktree --mode branch-off \
 
 ```bash
 paseo run --provider opencode --model opencode-go/longcat-2.5-preview-free \
-  --thinking medium -d \
+  -d \
   --workspace <workspace-id> "<worker prompt below, BEAD_ID substituted>"
 ```
 
