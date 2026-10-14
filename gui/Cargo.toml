@@ -9,3 +9,4 @@ description = "GUI for QGIS Rust port (iced + wgpu, built last per ADR-0002)"
 iced = { workspace = true, features = ["canvas"] }
 qgis-geometry = { path = "../geometry" }
 qgis-crs = { path = "../crs" }
+qgis-style = { path = "../style" }
