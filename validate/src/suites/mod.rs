@@ -7,15 +7,17 @@
 
 use crate::{CheckFn, Report, Runner};
 
+pub mod providers;
 pub mod selfcheck;
 
 /// Names of every registered suite, for `--list`.
-pub const SUITES: &[&str] = &["selfcheck"];
+pub const SUITES: &[&str] = &["selfcheck", "providers"];
 
 /// Run a named suite, or `None` if no such suite is registered.
 pub fn run(name: &str) -> Option<Report> {
     let checks: Vec<(String, CheckFn)> = match name {
         "selfcheck" => selfcheck::checks(),
+        "providers" => providers::checks(),
         _ => return None,
     };
     Some(Runner::run(name, checks))
