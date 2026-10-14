@@ -360,4 +360,150 @@ mod tests {
         let visible_names: Vec<&str> = reg.iter_visible().map(|l| l.name.as_str()).collect();
         assert_eq!(visible_names, vec!["a", "c"]);
     }
+
+    #[test]
+    fn feature_extent_and_bounding_box_all_geometry_variants() {
+        use qgis_geometry::{
+            GeometryCollection, LineString, MultiLineString, MultiPoint, MultiPolygon, Point,
+            Polygon,
+        };
+
+        // None geometry
+        let mut f_none = Feature::new(0, None);
+        assert_eq!(f_none.geometry_type(), "None");
+        assert_eq!(f_none.extent(), None);
+        assert_eq!(f_none.bounding_box(), None);
+        f_none.set_attribute("name", Value::Text("empty".into()));
+        assert_eq!(f_none.attribute("name"), Some(&Value::Text("empty".into())));
+        assert_eq!(f_none.attribute("missing"), None);
+
+        // Point
+        let f_pt = Feature::new(1, Some(Geometry::Point(Point::new(-3.5, 7.25))));
+        assert_eq!(f_pt.geometry_type(), "Point");
+        assert_eq!(f_pt.extent(), Some((-3.5, 7.25, -3.5, 7.25)));
+        assert_eq!(f_pt.bounding_box(), Some((-3.5, 7.25, -3.5, 7.25)));
+
+        // LineString (non-empty and empty)
+        let ls = LineString::new(vec![
+            Point::new(1.0, 5.0),
+            Point::new(-2.0, 3.0),
+            Point::new(4.0, -1.0),
+        ]);
+        let f_ls = Feature::new(2, Some(Geometry::LineString(ls)));
+        assert_eq!(f_ls.geometry_type(), "LineString");
+        assert_eq!(f_ls.extent(), Some((-2.0, -1.0, 4.0, 5.0)));
+        assert_eq!(f_ls.bounding_box(), Some((-2.0, -1.0, 4.0, 5.0)));
+
+        let f_ls_empty = Feature::new(3, Some(Geometry::LineString(LineString::new(vec![]))));
+        assert_eq!(f_ls_empty.extent(), None);
+        assert_eq!(f_ls_empty.bounding_box(), None);
+
+        // Polygon (with exterior + interior ring, and empty)
+        let poly = Polygon::with_holes(
+            vec![
+                Point::new(0.0, 0.0),
+                Point::new(10.0, 0.0),
+                Point::new(10.0, 8.0),
+                Point::new(0.0, 8.0),
+                Point::new(0.0, 0.0),
+            ],
+            vec![vec![
+                Point::new(2.0, 2.0),
+                Point::new(4.0, 2.0),
+                Point::new(4.0, 4.0),
+                Point::new(2.0, 2.0),
+            ]],
+        );
+        let f_poly = Feature::new(4, Some(Geometry::Polygon(poly)));
+        assert_eq!(f_poly.geometry_type(), "Polygon");
+        assert_eq!(f_poly.extent(), Some((0.0, 0.0, 10.0, 8.0)));
+        assert_eq!(f_poly.bounding_box(), Some((0.0, 0.0, 10.0, 8.0)));
+
+        let f_poly_empty = Feature::new(5, Some(Geometry::Polygon(Polygon::new(vec![]))));
+        assert_eq!(f_poly_empty.extent(), None);
+        assert_eq!(f_poly_empty.bounding_box(), None);
+
+        // MultiPoint (non-empty and empty)
+        let mp = MultiPoint::new(vec![Point::new(-5.0, 2.0), Point::new(3.0, -4.0)]);
+        let f_mp = Feature::new(6, Some(Geometry::MultiPoint(mp)));
+        assert_eq!(f_mp.geometry_type(), "MultiPoint");
+        assert_eq!(f_mp.extent(), Some((-5.0, -4.0, 3.0, 2.0)));
+        assert_eq!(f_mp.bounding_box(), Some((-5.0, -4.0, 3.0, 2.0)));
+
+        let f_mp_empty = Feature::new(7, Some(Geometry::MultiPoint(MultiPoint::new(vec![]))));
+        assert_eq!(f_mp_empty.extent(), None);
+        assert_eq!(f_mp_empty.bounding_box(), None);
+
+        // MultiLineString (non-empty and empty)
+        let mls = MultiLineString::new(vec![
+            LineString::new(vec![Point::new(0.0, 1.0), Point::new(2.0, 3.0)]),
+            LineString::new(vec![Point::new(-4.0, 6.0), Point::new(1.0, -2.0)]),
+        ]);
+        let f_mls = Feature::new(8, Some(Geometry::MultiLineString(mls)));
+        assert_eq!(f_mls.geometry_type(), "MultiLineString");
+        assert_eq!(f_mls.extent(), Some((-4.0, -2.0, 2.0, 6.0)));
+        assert_eq!(f_mls.bounding_box(), Some((-4.0, -2.0, 2.0, 6.0)));
+
+        let f_mls_empty = Feature::new(
+            9,
+            Some(Geometry::MultiLineString(MultiLineString::new(vec![]))),
+        );
+        assert_eq!(f_mls_empty.extent(), None);
+        assert_eq!(f_mls_empty.bounding_box(), None);
+
+        // MultiPolygon (non-empty and empty)
+        let mpoly = MultiPolygon::new(vec![
+            Polygon::new(vec![
+                Point::new(1.0, 1.0),
+                Point::new(3.0, 1.0),
+                Point::new(3.0, 4.0),
+                Point::new(1.0, 1.0),
+            ]),
+            Polygon::with_holes(
+                vec![
+                    Point::new(-6.0, -2.0),
+                    Point::new(0.0, -2.0),
+                    Point::new(0.0, 5.0),
+                    Point::new(-6.0, -2.0),
+                ],
+                vec![vec![
+                    Point::new(-3.0, -1.0),
+                    Point::new(-1.0, -1.0),
+                    Point::new(-1.0, 1.0),
+                    Point::new(-3.0, -1.0),
+                ]],
+            ),
+        ]);
+        let f_mpoly = Feature::new(10, Some(Geometry::MultiPolygon(mpoly)));
+        assert_eq!(f_mpoly.geometry_type(), "MultiPolygon");
+        assert_eq!(f_mpoly.extent(), Some((-6.0, -2.0, 3.0, 5.0)));
+        assert_eq!(f_mpoly.bounding_box(), Some((-6.0, -2.0, 3.0, 5.0)));
+
+        let f_mpoly_empty =
+            Feature::new(11, Some(Geometry::MultiPolygon(MultiPolygon::new(vec![]))));
+        assert_eq!(f_mpoly_empty.extent(), None);
+        assert_eq!(f_mpoly_empty.bounding_box(), None);
+
+        // GeometryCollection (non-empty and empty)
+        let gc = GeometryCollection::new(vec![
+            Geometry::Point(Point::new(10.0, -10.0)),
+            Geometry::LineString(LineString::new(vec![
+                Point::new(-8.0, 2.0),
+                Point::new(4.0, 12.0),
+            ])),
+        ]);
+        let f_gc = Feature::new(12, Some(Geometry::GeometryCollection(gc)));
+        assert_eq!(f_gc.geometry_type(), "GeometryCollection");
+        assert_eq!(f_gc.extent(), Some((-8.0, -10.0, 10.0, 12.0)));
+        assert_eq!(f_gc.bounding_box(), Some((-8.0, -10.0, 10.0, 12.0)));
+
+        let f_gc_empty = Feature::new(
+            13,
+            Some(Geometry::GeometryCollection(GeometryCollection::new(
+                vec![],
+            ))),
+        );
+        assert_eq!(f_gc_empty.extent(), None);
+        assert_eq!(f_gc_empty.bounding_box(), None);
+    }
 }
