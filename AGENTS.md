@@ -130,6 +130,8 @@ bd prime                # Refresh Beads context
 ## Verification Infrastructure
 
 Start with [CRATES.md](CRATES.md) for the crate → purpose → verify-command map.
+
+> **Important: `cargo` is NOT on `PATH`.** In agent shells, `~/.cargo/bin` is not on the default `PATH` (`~/.cargo/env` is sourced inside `./verify`). Running bare `cargo test` or `cargo check` will fail with `cargo: command not found`. Do not waste turns probing `which cargo` — go straight to `./verify`.
 This project has a composable verification CLI at `./verify` and an OpenCode skill
 at `.opencode/skills/verify-qgis/`. Use them to prove behavior — never chain `cargo`
 commands ad-hoc in a prompt.

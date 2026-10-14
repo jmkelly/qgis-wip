@@ -20,6 +20,11 @@ cd "$(dirname "$0")"
 
 die() { echo "error: $*" >&2; exit 2; }
 
+CARGO_ON_BARE_PATH=0
+if command -v cargo &>/dev/null; then
+    CARGO_ON_BARE_PATH=1
+fi
+
 need_cargo() {
     if ! command -v cargo &>/dev/null; then
         if [ -f "$HOME/.cargo/env" ]; then
@@ -196,6 +201,12 @@ cmd_doctor() {
     echo "=== verify doctor ==="
     echo "rustc:  $(rustc --version 2>/dev/null || echo MISSING)"
     echo "cargo:  $(cargo --version 2>/dev/null || echo MISSING)"
+    if [ "$CARGO_ON_BARE_PATH" -eq 1 ]; then
+        echo "PATH:   cargo resolves on bare PATH ($(command -v cargo))"
+    else
+        echo "PATH:   cargo missing from bare PATH (resolved via ~/.cargo/env inside ./verify)"
+        echo "  remediation: use ./verify instead of bare cargo, or run 'source ~/.cargo/env' (export PATH=\"\$HOME/.cargo/bin:\$PATH\")"
+    fi
 
     if nextest_available; then
         echo "nextest: $(cargo nextest --version 2>/dev/null)"
