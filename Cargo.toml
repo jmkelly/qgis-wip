@@ -19,6 +19,7 @@ members = [
     "raster",
     "mesh",
     "pointcloud",
+    "validate",
 ]
 
 [workspace.package]

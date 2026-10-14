@@ -1,0 +1,10 @@
+[package]
+name = "qgis-validate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Agent-runnable validation harness and report format for the QGIS Rust port"
+
+[dependencies]
+serde_json = { workspace = true }
+qgis-geometry = { path = "../geometry" }
