@@ -44,6 +44,38 @@ drained"** and do nothing; the human deletes the schedule. Do not invent work.
 process work is scheduled separately. Treat a bead's acceptance command as the
 definition of done.
 
+### Coordinator spawn mechanism (persistent, not per-tick)
+
+The coordinator is a **persistent agent**, not a fresh spawn each tick. The
+`*/5` cron used to spawn a brand-new coordinator every five minutes via
+`paseo run`; on Oct 13 alone 92 coordinator agents died instantly with
+"Rate limit exceeded. Please try again later." — the single largest waste of
+agent runs in the swarm. The provider rate-limits frequent *spawns*; reusing
+a live agent via `paseo send` does not touch that limit.
+
+**Spawn the coordinator once**, then drive every tick by sending the tick
+prompt to the same agent id:
+
+```bash
+# one-time setup (human or orchestrator): create the persistent coordinator
+paseo run --provider opencode --model opencode-go/longcat-2.5-preview-free \
+  --thinking medium "You are the swarm coordinator … Read eng/runbook.md …"
+# -> note the returned agent id
+
+# each tick: reuse the same agent instead of spawning a new one
+paseo send <coordinator-agent-id> "<one-tick coordinator prompt>"
+```
+
+The schedule object targets the persistent agent (`paseo send` to a fixed id),
+not `new-agent` (`paseo run`). The runbook is the source of truth for this
+mechanism — a spawn that fails with a rate-limit error is retried by reusing
+the existing coordinator agent via `paseo send`, never by spawning again.
+
+The `*/5` cadence is unchanged: the rate-limit cost was in the *spawn*, not
+the tick frequency, and `paseo send` removes it. If a future provider
+re-introduces a send-side limit, lower the cadence rather than reverting to
+per-tick `paseo run`.
+
 ---
 
 ## Cap enforcement rules
