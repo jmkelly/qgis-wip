@@ -11,7 +11,7 @@ use qgis_core::Layer;
 use crate::app::{AppState, Message};
 
 /// Creates the layer panel sidebar widget.
-pub fn view(state: &AppState) -> Element<Message> {
+pub fn view(state: &AppState) -> Element<'_, Message> {
     let mut rows = Vec::new();
     for (idx, layer) in state.registry.iter().enumerate() {
         rows.push(layer_row(state, idx, layer));

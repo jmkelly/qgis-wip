@@ -576,8 +576,8 @@ mod tests {
             Value::Int(42)
         );
         assert_eq!(
-            json_to_value(&serde_json::Value::from(3.14)),
-            Value::Float(3.14)
+            json_to_value(&serde_json::Value::from(std::f64::consts::PI)),
+            Value::Float(std::f64::consts::PI)
         );
         assert_eq!(
             json_to_value(&serde_json::Value::from("hello")),
@@ -619,9 +619,9 @@ mod tests {
         state.registry.add_layer(layer);
 
         assert!(state.registry.layer_at(0).unwrap().visible);
-        update(&mut state, Message::LayerVisibilityToggled(0));
+        let _ = update(&mut state, Message::LayerVisibilityToggled(0));
         assert!(!state.registry.layer_at(0).unwrap().visible);
-        update(&mut state, Message::LayerVisibilityToggled(0));
+        let _ = update(&mut state, Message::LayerVisibilityToggled(0));
         assert!(state.registry.layer_at(0).unwrap().visible);
     }
 
@@ -633,7 +633,7 @@ mod tests {
         state.registry.add_layer(Layer::new("c", SrsId::from_epsg(4326)));
         state.selected_layer = Some(1);
 
-        update(&mut state, Message::LayerDeleted(1));
+        let _ = update(&mut state, Message::LayerDeleted(1));
         assert_eq!(state.registry.len(), 2);
         assert_eq!(state.registry.layer_at(0).unwrap().name, "a");
         assert_eq!(state.registry.layer_at(1).unwrap().name, "c");
@@ -648,37 +648,41 @@ mod tests {
         state.registry.add_layer(Layer::new("c", SrsId::from_epsg(4326)));
 
         // Move "c" (index 2) up -> should swap with "b"
-        update(&mut state, Message::LayerMoveUp(2));
+        let _ = update(&mut state, Message::LayerMoveUp(2));
         assert_eq!(state.registry.layer_at(1).unwrap().name, "c");
         assert_eq!(state.registry.layer_at(2).unwrap().name, "b");
 
         // Move "c" (now index 1) down -> swap back with "b"
-        update(&mut state, Message::LayerMoveDown(1));
+        let _ = update(&mut state, Message::LayerMoveDown(1));
         assert_eq!(state.registry.layer_at(1).unwrap().name, "b");
         assert_eq!(state.registry.layer_at(2).unwrap().name, "c");
 
         // Move up at index 0 is a no-op
-        update(&mut state, Message::LayerMoveUp(0));
+        let _ = update(&mut state, Message::LayerMoveUp(0));
         assert_eq!(state.registry.layer_at(0).unwrap().name, "a");
 
         // Move down at last index is a no-op
-        update(&mut state, Message::LayerMoveDown(2));
+        let _ = update(&mut state, Message::LayerMoveDown(2));
         assert_eq!(state.registry.layer_at(2).unwrap().name, "c");
     }
 
     #[test]
     fn cancel_clears_dialog() {
-        let mut state = AppState::default();
-        state.dialog = Some(Dialog::FileOpen { path: "test.shp".into() });
-        update(&mut state, Message::Cancel);
+        let mut state = AppState {
+            dialog: Some(Dialog::FileOpen { path: "test.shp".into() }),
+            ..Default::default()
+        };
+        let _ = update(&mut state, Message::Cancel);
         assert!(state.dialog.is_none());
     }
 
     #[test]
     fn file_dialog_input_updates_path() {
-        let mut state = AppState::default();
-        state.dialog = Some(Dialog::FileOpen { path: String::new() });
-        update(&mut state, Message::FileDialogInputChanged("roads.shp".into()));
+        let mut state = AppState {
+            dialog: Some(Dialog::FileOpen { path: String::new() }),
+            ..Default::default()
+        };
+        let _ = update(&mut state, Message::FileDialogInputChanged("roads.shp".into()));
         match &state.dialog {
             Some(Dialog::FileOpen { path }) => assert_eq!(path, "roads.shp"),
             other => panic!("expected FileOpen, got {:?}", other),
@@ -687,12 +691,14 @@ mod tests {
 
     #[test]
     fn style_dialog_input_updates_path() {
-        let mut state = AppState::default();
-        state.dialog = Some(Dialog::StyleAssign {
-            layer_index: 0,
-            path: String::new(),
-        });
-        update(&mut state, Message::StyleDialogInputChanged("polys.qml".into()));
+        let mut state = AppState {
+            dialog: Some(Dialog::StyleAssign {
+                layer_index: 0,
+                path: String::new(),
+            }),
+            ..Default::default()
+        };
+        let _ = update(&mut state, Message::StyleDialogInputChanged("polys.qml".into()));
         match &state.dialog {
             Some(Dialog::StyleAssign { path, .. }) => assert_eq!(path, "polys.qml"),
             other => panic!("expected StyleAssign, got {:?}", other),
@@ -704,7 +710,7 @@ mod tests {
         let mut state = AppState::default();
         state.registry.add_layer(Layer::new("a", SrsId::from_epsg(4326)));
         state.selected_layer = Some(0);
-        update(&mut state, Message::AssignStyleDialog);
+        let _ = update(&mut state, Message::AssignStyleDialog);
         match &state.dialog {
             Some(Dialog::StyleAssign { layer_index, .. }) => assert_eq!(*layer_index, 0),
             other => panic!("expected StyleAssign, got {:?}", other),
@@ -716,7 +722,7 @@ mod tests {
         let mut state = AppState::default();
         state.registry.add_layer(Layer::new("a", SrsId::from_epsg(4326)));
         state.selected_layer = None;
-        update(&mut state, Message::AssignStyleDialog);
+        let _ = update(&mut state, Message::AssignStyleDialog);
         assert_eq!(state.selected_layer, Some(0));
         assert!(matches!(state.dialog, Some(Dialog::StyleAssign { .. })));
     }
@@ -724,7 +730,7 @@ mod tests {
     #[test]
     fn assign_style_dialog_warns_when_no_layers() {
         let mut state = AppState::default();
-        update(&mut state, Message::AssignStyleDialog);
+        let _ = update(&mut state, Message::AssignStyleDialog);
         assert!(state.dialog.is_none());
         assert!(state.status.contains("No layers"));
     }
@@ -756,16 +762,16 @@ mod tests {
         let mut state = AppState::default();
         assert!(!state.file_menu_open);
 
-        update(&mut state, Message::ToggleFileMenu);
+        let _ = update(&mut state, Message::ToggleFileMenu);
         assert!(state.file_menu_open);
 
-        update(&mut state, Message::ToggleFileMenu);
+        let _ = update(&mut state, Message::ToggleFileMenu);
         assert!(!state.file_menu_open);
 
         // Selecting an item closes the menu.
-        update(&mut state, Message::ToggleFileMenu);
+        let _ = update(&mut state, Message::ToggleFileMenu);
         assert!(state.file_menu_open);
-        update(&mut state, Message::OpenFileDialog);
+        let _ = update(&mut state, Message::OpenFileDialog);
         assert!(!state.file_menu_open);
         assert!(matches!(state.dialog, Some(Dialog::FileOpen { .. })));
     }
@@ -799,9 +805,9 @@ mod tests {
         // 1. Load a shapefile through the file-open dialog path: open the
         //    dialog, enter the path, confirm — the same event sequence the
         //    GUI event loop produces.
-        update(&mut state, Message::OpenFileDialog);
-        update(&mut state, Message::FileDialogInputChanged(shp_path.clone()));
-        update(&mut state, Message::FileDialogConfirm);
+        let _ = update(&mut state, Message::OpenFileDialog);
+        let _ = update(&mut state, Message::FileDialogInputChanged(shp_path.clone()));
+        let _ = update(&mut state, Message::FileDialogConfirm);
         assert_eq!(state.registry.len(), 1, "shapefile should load as one layer");
         let layer = state.registry.layer_at(0).unwrap().clone();
         assert_eq!(layer.name, "france_parts");
@@ -829,9 +835,9 @@ mod tests {
 
         // 3. Apply a .qml style through the style-assignment dialog path:
         //    open the dialog for the selected layer, enter the path, confirm.
-        update(&mut state, Message::AssignStyleDialog);
-        update(&mut state, Message::StyleDialogInputChanged(qml_path.clone()));
-        update(&mut state, Message::StyleDialogConfirm);
+        let _ = update(&mut state, Message::AssignStyleDialog);
+        let _ = update(&mut state, Message::StyleDialogInputChanged(qml_path.clone()));
+        let _ = update(&mut state, Message::StyleDialogConfirm);
         assert!(
             state.styles.contains_key(&0),
             "style should be applied to layer 0"
@@ -840,9 +846,9 @@ mod tests {
 
         // 4. Save a .qgs project through the project-save dialog path: open
         //    the dialog, enter the path, confirm.
-        update(&mut state, Message::SaveProjectDialog);
-        update(&mut state, Message::ProjectPathChanged(qgs_path.clone()));
-        update(&mut state, Message::ProjectSaveConfirm);
+        let _ = update(&mut state, Message::SaveProjectDialog);
+        let _ = update(&mut state, Message::ProjectPathChanged(qgs_path.clone()));
+        let _ = update(&mut state, Message::ProjectSaveConfirm);
         let saved = std::fs::read_to_string(&qgs_path).expect("project file should be written");
         assert!(saved.contains("<qgis"));
         assert!(saved.contains("france_parts"));

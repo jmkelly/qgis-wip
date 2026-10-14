@@ -9,7 +9,7 @@ use iced::{alignment, Color, Element, Length};
 use crate::app::{Dialog, Message};
 
 /// Creates the dialog view, replacing the main content.
-pub fn view(dialog: &Dialog) -> Element<Message> {
+pub fn view(dialog: &Dialog) -> Element<'_, Message> {
     match dialog {
         Dialog::FileOpen { path } => file_open_dialog(path),
         Dialog::StyleAssign { path, .. } => style_assign_dialog(path),
@@ -41,7 +41,7 @@ fn dialog_frame<'a>(title: &'a str, content: Column<'a, Message>) -> Element<'a,
 }
 
 /// File open dialog: enter a path to a .shp, .geojson, or .gpkg file.
-fn file_open_dialog(path: &str) -> Element<Message> {
+fn file_open_dialog(path: &str) -> Element<'_, Message> {
     dialog_frame(
         "Open Spatial File",
         column![
@@ -60,7 +60,7 @@ fn file_open_dialog(path: &str) -> Element<Message> {
 }
 
 /// Style assignment dialog: enter a path to a .qml style file.
-fn style_assign_dialog(path: &str) -> Element<Message> {
+fn style_assign_dialog(path: &str) -> Element<'_, Message> {
     dialog_frame(
         "Assign Style",
         column![
@@ -79,7 +79,7 @@ fn style_assign_dialog(path: &str) -> Element<Message> {
 }
 
 /// Project save dialog: enter a path for the .qgs project file.
-fn project_save_dialog(path: &str) -> Element<Message> {
+fn project_save_dialog(path: &str) -> Element<'_, Message> {
     dialog_frame(
         "Save Project",
         column![
@@ -98,7 +98,7 @@ fn project_save_dialog(path: &str) -> Element<Message> {
 }
 
 /// Project open dialog: enter a path to an existing .qgs project file.
-fn project_open_dialog(path: &str) -> Element<Message> {
+fn project_open_dialog(path: &str) -> Element<'_, Message> {
     dialog_frame(
         "Open Project",
         column![
@@ -117,7 +117,7 @@ fn project_open_dialog(path: &str) -> Element<Message> {
 }
 
 /// Error dialog: shows an error message with a dismiss button.
-fn error_dialog(message: &str) -> Element<Message> {
+fn error_dialog(message: &str) -> Element<'_, Message> {
     dialog_frame(
         "Error",
         column![
