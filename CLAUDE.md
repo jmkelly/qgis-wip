@@ -74,6 +74,14 @@ commands ad-hoc in a prompt.
 ./verify all [--geiger]             # everything
 ```
 
+Coordinator post-merge cleanup has its own tool:
+
+```bash
+./merge-and-cleanup --branch <branch> --worktree <path> --crate <name> \
+    --bead <id> --workspace <workspace-id>   # fetch, rebase, gate, merge, push, close, remove worktree
+./merge-and-cleanup --help
+```
+
 ### Evidence rules
 
 1. "It compiles" is not evidence — run the gate and show output.
