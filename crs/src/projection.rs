@@ -123,7 +123,7 @@ impl Ellipsoid {
             return Ok(Self::sphere(r));
         }
         if let Some(name) = params.get_str("ellps") {
-            return Self::from_name(&name).ok_or(ProjectionError::UnknownEllipsoid(name.to_string()));
+            return Self::from_name(name).ok_or(ProjectionError::UnknownEllipsoid(name.to_string()));
         }
         if let Some(a) = params.get("a") {
             if let Some(b) = params.get("b") {
@@ -517,28 +517,26 @@ impl Orthographic {
             return Ok((0.0, self.phi0));
         }
 
-        let (mut x, mut y, mut phi) = (x, y, 0.0_f64);
-        match self.mode {
+        let (mut x, mut y) = (x, y);
+        let phi = match self.mode {
             OrthoMode::NPole => {
                 y = -y;
-                phi = sinc.acos();
+                sinc.acos()
             }
-            OrthoMode::SPole => {
-                phi = -sinc.acos();
-            }
+            OrthoMode::SPole => -sinc.acos(),
             OrthoMode::Equit => {
                 let phi_sine = y * sinc / rh;
                 x *= sinc;
                 y = cosc * rh;
-                phi = sinchk(phi_sine);
+                sinchk(phi_sine)
             }
             OrthoMode::Obliq => {
                 let phi_sine = cosc * self.sinph0 + y * sinc * self.cosph0 / rh;
                 y = (cosc - self.sinph0 * phi_sine) * rh;
                 x *= sinc * self.cosph0;
-                phi = sinchk(phi_sine);
+                sinchk(phi_sine)
             }
-        }
+        };
 
         let lam = if y == 0.0 && matches!(self.mode, OrthoMode::Obliq | OrthoMode::Equit) {
             if x == 0.0 {
@@ -690,7 +688,7 @@ fn sinchk(phi_sine: f64) -> f64 {
 /// QSC cube face (from PROJ `qsc.cpp`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
-enum QscFace {
+pub enum QscFace {
     Front = 0,
     Right = 1,
     Back = 2,
@@ -819,9 +817,9 @@ impl Qsc {
         let mut area = QscArea::Area0;
 
         // Convert input lat/lon into theta, phi as used by QSC
-        let (mut phi_q, mut theta) = if self.face == QscFace::Top {
+        let (phi_q, theta) = if self.face == QscFace::Top {
             let p = HALFPI - lat;
-            if longitude >= FORTPI && longitude <= HALFPI + FORTPI {
+            if (FORTPI..=HALFPI + FORTPI).contains(&longitude) {
                 area = QscArea::Area0;
                 (p, longitude - HALFPI)
             } else if longitude > HALFPI + FORTPI || longitude <= -(HALFPI + FORTPI) {
@@ -836,13 +834,13 @@ impl Qsc {
             }
         } else if self.face == QscFace::Bottom {
             let p = HALFPI + lat;
-            if longitude >= FORTPI && longitude <= HALFPI + FORTPI {
+            if (FORTPI..=HALFPI + FORTPI).contains(&longitude) {
                 area = QscArea::Area0;
                 (p, -longitude + HALFPI)
-            } else if longitude >= -FORTPI && longitude < FORTPI {
+            } else if (-FORTPI..FORTPI).contains(&longitude) {
                 area = QscArea::Area1;
                 (p, -longitude)
-            } else if longitude >= -(HALFPI + FORTPI) && longitude < -FORTPI {
+            } else if (-(HALFPI + FORTPI)..-FORTPI).contains(&longitude) {
                 area = QscArea::Area2;
                 (p, -longitude - HALFPI)
             } else {
@@ -942,14 +940,10 @@ impl Qsc {
         let tannu = nu.tan();
         let mut cosphi = 1.0
             - cosmu * cosmu * tannu * tannu * (1.0 - (1.0 / theta.cos()).atan().cos());
-        if cosphi < -1.0 {
-            cosphi = -1.0;
-        } else if cosphi > 1.0 {
-            cosphi = 1.0;
-        }
+        cosphi = cosphi.clamp(-1.0, 1.0);
 
         // Apply the result to the real area on the cube face
-        let (mut phi, mut lam) = if self.face == QscFace::Top {
+        let (mut phi, lam) = if self.face == QscFace::Top {
             let p = cosphi.acos();
             let phi_val = HALFPI - p;
             let lam_val = match area {
@@ -1397,23 +1391,23 @@ mod tests {
         let r = 6_370_997.0;
 
         let (x, y) = ortho.forward(deg2rad(45.0), 0.0).unwrap();
-        assert!((x * r - 4_504_975.1816).abs() < 1e-3, "x = {}", x * r);
+        assert!((x * r - 4_504_975.181_6).abs() < 1e-3, "x = {}", x * r);
         assert!(y.abs() < 1e-9);
 
         let (x, y) = ortho.forward(0.0, deg2rad(45.0)).unwrap();
         assert!(x.abs() < 1e-9);
-        assert!((y * r - 4_504_975.1816).abs() < 1e-3, "y = {}", y * r);
+        assert!((y * r - 4_504_975.181_6).abs() < 1e-3, "y = {}", y * r);
 
         let (x, y) = ortho.forward(deg2rad(45.0), deg2rad(45.0)).unwrap();
-        assert!((x * r - 3_185_498.5000).abs() < 1e-3, "x = {}", x * r);
-        assert!((y * r - 4_504_975.1816).abs() < 1e-3, "y = {}", y * r);
+        assert!((x * r - 3_185_498.500_0).abs() < 1e-3, "x = {}", x * r);
+        assert!((y * r - 4_504_975.181_6).abs() < 1e-3, "y = {}", y * r);
 
-        let (x, y) = ortho.forward(deg2rad(90.0), 0.0).unwrap();
+        let (x, _) = ortho.forward(deg2rad(90.0), 0.0).unwrap();
         assert!((x * r - 6_370_997.0).abs() < 1e-3, "x = {}", x * r);
 
         let (x, y) = ortho.forward(deg2rad(-45.0), deg2rad(30.0)).unwrap();
-        assert!((x * r - -3_901_422.9507).abs() < 1e-3, "x = {}", x * r);
-        assert!((y * r - 3_185_498.5000).abs() < 1e-3, "y = {}", y * r);
+        assert!((x * r - -3_901_422.950_7).abs() < 1e-3, "x = {}", x * r);
+        assert!((y * r - 3_185_498.500_0).abs() < 1e-3, "y = {}", y * r);
     }
 
     #[test]
@@ -1466,20 +1460,20 @@ mod tests {
         let a = 6_378_137.0;
 
         let (x, y) = ortho.forward(deg2rad(40.0), deg2rad(50.0)).unwrap();
-        assert!((x * a - 2_640_484.1401).abs() < 1e-3, "x = {}", x * a);
-        assert!((y * a - 1_723_437.9542).abs() < 1e-3, "y = {}", y * a);
+        assert!((x * a - 2_640_484.140_1).abs() < 1e-3, "x = {}", x * a);
+        assert!((y * a - 1_723_437.954_2).abs() < 1e-3, "y = {}", y * a);
 
         let (x, y) = ortho.forward(deg2rad(-40.0), deg2rad(30.0)).unwrap();
-        assert!((x * a - -3_553_494.8709).abs() < 1e-3, "x = {}", x * a);
-        assert!((y * a - -272_434.1805).abs() < 1e-3, "y = {}", y * a);
+        assert!((x * a - -3_553_494.870_9).abs() < 1e-3, "x = {}", x * a);
+        assert!((y * a - -272_434.180_5).abs() < 1e-3, "y = {}", y * a);
 
         let (x, y) = ortho.forward(0.0, deg2rad(80.0)).unwrap();
         assert!(x.abs() < 1e-9);
-        assert!((y * a - 4_101_898.7269).abs() < 1e-3, "y = {}", y * a);
+        assert!((y * a - 4_101_898.726_9).abs() < 1e-3, "y = {}", y * a);
 
         let (x, y) = ortho.forward(deg2rad(10.0), deg2rad(45.0)).unwrap();
-        assert!((x * a - 784_471.4236).abs() < 1e-3, "x = {}", x * a);
-        assert!((y * a - 598_826.5352).abs() < 1e-3, "y = {}", y * a);
+        assert!((x * a - 784_471.423_6).abs() < 1e-3, "x = {}", x * a);
+        assert!((y * a - 598_826.535_2).abs() < 1e-3, "y = {}", y * a);
     }
 
     #[test]
@@ -1510,8 +1504,8 @@ mod tests {
 
         let (x, y) = ortho.forward(deg2rad(20.0), deg2rad(40.0)).unwrap();
         let a = 6_378_137.0;
-        assert!((x * a - 1_673_404.5546).abs() < 1e-3, "x = {}", x * a);
-        assert!((y * a - 1_251_322.6134).abs() < 1e-3, "y = {}", y * a);
+        assert!((x * a - 1_673_404.554_6).abs() < 1e-3, "x = {}", x * a);
+        assert!((y * a - 1_251_322.613_4).abs() < 1e-3, "y = {}", y * a);
 
         for (lon, lat) in [(30.0, 40.0), (-10.0, 20.0), (50.0, 50.0), (10.0, 85.0)] {
             let (x, y) = ortho.forward(deg2rad(lon - 10.0), deg2rad(lat)).unwrap();
@@ -1533,15 +1527,15 @@ mod tests {
 
         let (x, y) = ortho.forward(0.0, deg2rad(80.0)).unwrap();
         assert!(x.abs() < 1e-9);
-        assert!((y * a - -1_111_164.8708).abs() < 1e-3, "y = {}", y * a);
+        assert!((y * a - -1_111_164.870_8).abs() < 1e-3, "y = {}", y * a);
 
         let (x, y) = ortho.forward(deg2rad(90.0), deg2rad(85.0)).unwrap();
-        assert!((x * a - 557_747.0593).abs() < 1e-3, "x = {}", x * a);
+        assert!((x * a - 557_747.059_3).abs() < 1e-3, "x = {}", x * a);
         assert!(y.abs() < 1e-9);
 
         let (x, y) = ortho.forward(deg2rad(-45.0), deg2rad(70.0)).unwrap();
-        assert!((x * a - -1_547_098.4776).abs() < 1e-3, "x = {}", x * a);
-        assert!((y * a - -1_547_098.4776).abs() < 1e-3, "y = {}", y * a);
+        assert!((x * a - -1_547_098.477_6).abs() < 1e-3, "x = {}", x * a);
+        assert!((y * a - -1_547_098.477_6).abs() < 1e-3, "y = {}", y * a);
 
         // Roundtrips
         for (lon, lat) in [(0.0, 80.0), (90.0, 85.0), (-45.0, 70.0), (179.0, 89.0)] {
@@ -1585,20 +1579,20 @@ mod tests {
         assert!(y.abs() < 1e-9);
 
         let (x, y) = qsc.forward(deg2rad(20.0), deg2rad(10.0)).unwrap();
-        assert!((x * a - 3_005_102.9765).abs() < 1e-3, "x = {}", x * a);
-        assert!((y * a - 1_665_726.7860).abs() < 1e-3, "y = {}", y * a);
+        assert!((x * a - 3_005_102.976_5).abs() < 1e-3, "x = {}", x * a);
+        assert!((y * a - 1_665_726.786_0).abs() < 1e-3, "y = {}", y * a);
 
         let (x, y) = qsc.forward(deg2rad(-30.0), deg2rad(20.0)).unwrap();
-        assert!((x * a - -4_514_409.1351).abs() < 1e-3, "x = {}", x * a);
-        assert!((y * a - 3_428_784.8903).abs() < 1e-3, "y = {}", y * a);
+        assert!((x * a - -4_514_409.135_1).abs() < 1e-3, "x = {}", x * a);
+        assert!((y * a - 3_428_784.890_3).abs() < 1e-3, "y = {}", y * a);
 
         let (x, y) = qsc.forward(deg2rad(40.0), deg2rad(-15.0)).unwrap();
-        assert!((x * a - 5_733_784.2933).abs() < 1e-3, "x = {}", x * a);
-        assert!((y * a - -2_598_473.5667).abs() < 1e-3, "y = {}", y * a);
+        assert!((x * a - 5_733_784.293_3).abs() < 1e-3, "x = {}", x * a);
+        assert!((y * a - -2_598_473.566_7).abs() < 1e-3, "y = {}", y * a);
 
         let (x, y) = qsc.forward(deg2rad(44.0), deg2rad(5.0)).unwrap();
-        assert!((x * a - 6_244_241.5150).abs() < 1e-3, "x = {}", x * a);
-        assert!((y * a - 872_144.1253).abs() < 1e-3, "y = {}", y * a);
+        assert!((x * a - 6_244_241.515_0).abs() < 1e-3, "x = {}", x * a);
+        assert!((y * a - 872_144.125_3).abs() < 1e-3, "y = {}", y * a);
     }
 
     #[test]
@@ -1616,16 +1610,16 @@ mod tests {
         assert!(y.abs() < 1e-9);
 
         let (x, y) = qsc.forward(deg2rad(20.0), deg2rad(10.0)).unwrap();
-        assert!((x * a - 3_005_102.9765).abs() < 1e-3, "x = {}", x * a);
-        assert!((y * a - 1_665_726.7860).abs() < 1e-3, "y = {}", y * a);
+        assert!((x * a - 3_005_102.976_5).abs() < 1e-3, "x = {}", x * a);
+        assert!((y * a - 1_665_726.786_0).abs() < 1e-3, "y = {}", y * a);
 
         let (x, y) = qsc.forward(deg2rad(-20.0), deg2rad(-20.0)).unwrap();
-        assert!((x * a - -3_237_671.5889).abs() < 1e-3, "x = {}", x * a);
-        assert!((y * a - -3_387_430.6477).abs() < 1e-3, "y = {}", y * a);
+        assert!((x * a - -3_237_671.588_9).abs() < 1e-3, "x = {}", x * a);
+        assert!((y * a - -3_387_430.647_7).abs() < 1e-3, "y = {}", y * a);
 
         let (x, y) = qsc.forward(deg2rad(40.0), deg2rad(15.0)).unwrap();
-        assert!((x * a - 5_733_784.2933).abs() < 1e-3, "x = {}", x * a);
-        assert!((y * a - 2_598_473.5667).abs() < 1e-3, "y = {}", y * a);
+        assert!((x * a - 5_733_784.293_3).abs() < 1e-3, "x = {}", x * a);
+        assert!((y * a - 2_598_473.566_7).abs() < 1e-3, "y = {}", y * a);
     }
 
     #[test]
@@ -1640,19 +1634,19 @@ mod tests {
 
         let (x, y) = qsc.forward(0.0, deg2rad(80.0)).unwrap();
         assert!(x.abs() < 1e-9);
-        assert!((y * a - -1_462_179.6163).abs() < 1e-3, "y = {}", y * a);
+        assert!((y * a - -1_462_179.616_3).abs() < 1e-3, "y = {}", y * a);
 
         let (x, y) = qsc.forward(deg2rad(90.0), deg2rad(85.0)).unwrap();
-        assert!((x * a - 731_870.2788).abs() < 1e-3, "x = {}", x * a);
+        assert!((x * a - 731_870.278_8).abs() < 1e-3, "x = {}", x * a);
         assert!(y.abs() < 1e-9);
 
         let (x, y) = qsc.forward(deg2rad(-90.0), deg2rad(75.0)).unwrap();
-        assert!((x * a - -2_189_377.3583).abs() < 1e-3, "x = {}", x * a);
+        assert!((x * a - -2_189_377.358_3).abs() < 1e-3, "x = {}", x * a);
         assert!(y.abs() < 1e-9);
 
         let (x, y) = qsc.forward(deg2rad(180.0), deg2rad(89.0)).unwrap();
         assert!(x.abs() < 1e-9);
-        assert!((y * a - 146_424.0716).abs() < 1e-3, "y = {}", y * a);
+        assert!((y * a - 146_424.071_6).abs() < 1e-3, "y = {}", y * a);
     }
 
     #[test]
@@ -1755,9 +1749,9 @@ mod tests {
         // Reference: Python port of geocent.cpp, WGS84, (12°, 55°, 100)
         let g = Geocent::new(Ellipsoid::wgs84());
         let (x, y, z) = g.forward(deg2rad(12.0), deg2rad(55.0), 100.0);
-        assert!((x - 3_586_525.7610).abs() < 1e-3, "x = {x}");
-        assert!((y - 762_339.5841).abs() < 1e-3, "y = {y}");
-        assert!((z - 5_201_465.4384).abs() < 1e-3, "z = {z}");
+        assert!((x - 3_586_525.761_0).abs() < 1e-3, "x = {x}");
+        assert!((y - 762_339.584_1).abs() < 1e-3, "y = {y}");
+        assert!((z - 5_201_465.438_4).abs() < 1e-3, "z = {z}");
     }
 
     #[test]
@@ -1814,7 +1808,7 @@ mod tests {
 
         let p = Projection::from_proj_string("+proj=geocent +ellps=WGS84").unwrap();
         assert_eq!(p.name(), "geocent");
-        let (x, y, z) = p.forward(0.0, 0.0, 0.0).unwrap();
+        let (x, _, _) = p.forward(0.0, 0.0, 0.0).unwrap();
         assert!((x - 6_378_137.0).abs() < 1e-6);
     }
 

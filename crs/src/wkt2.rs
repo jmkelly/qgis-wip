@@ -10,9 +10,6 @@
 
 #![forbid(unsafe_code)]
 
-use lazy_static::lazy_static;
-use regex::Regex;
-use std::collections::HashMap;
 use thiserror::Error;
 
 /// Errors that can occur while parsing WKT2:2019.
@@ -334,12 +331,6 @@ impl Wkt2Parser {
             });
         }
         Ok(crs)
-    }
-
-    fn advance(&mut self) -> Result<Option<Token>, Wkt2Error> {
-        let old = self.current.take();
-        self.current = self.lexer.next_token()?;
-        Ok(old)
     }
 
     fn expect_word(&mut self, expected: &str) -> Result<(), Wkt2Error> {
@@ -942,10 +933,12 @@ impl Wkt2Parser {
             _ => return Err(Wkt2Error::UnexpectedEof),
         };
 
-        let mut id = None;
+        // `CoordinateSystem` has no ID field, but the optional `ID[...]` node
+        // must still be consumed so the token stream stays aligned for the
+        // trailing AXIS nodes.
         if self.current == Some(Token::Comma) {
             self.expect_comma()?;
-            id = Some(self.parse_id()?);
+            self.parse_id()?;
         }
 
         self.expect_bracket(false)?;
@@ -1170,7 +1163,7 @@ impl Wkt2Parser {
 
         if self.current == Some(Token::Comma) {
             self.expect_comma()?;
-            let _factor = match self.current.take() {
+            match self.current.take() {
                 Some(Token::Number(_n)) => {
                     self.current = self.lexer.next_token()?;
                 }
@@ -1383,7 +1376,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_projCRS_basic() {
+    fn parse_proj_crs_basic() {
         let wkt = r#"PROJCRS["WGS 84 / Pseudo-Mercator",BASEGEOGCRS["WGS 84",DATUM["World Geodetic System 1984",ELLIPSOID["WGS 84",6378137,298.257223563,ID["EPSG",7030]]],PRIMEM["Greenwich",0,ID["EPSG",8901]]],CONVERSION["Popular Visualisation Pseudo-Mercator",METHOD["Popular Visualisation Pseudo Mercator",ID["EPSG",1024]],PARAMETER["Latitude of natural origin",0,ID["EPSG",8801]],PARAMETER["Longitude of natural origin",0,ID["EPSG",8802]],PARAMETER["False easting",0,ID["EPSG",8806]],PARAMETER["False northing",0,ID["EPSG",8807]]],CS[Cartesian,2],AXIS["easting",east],AXIS["northing",north],LENGTHUNIT["metre",1,ID["EPSG",9001]],ID["EPSG",3857]]"#;
         let result = parse_wkt2(wkt);
         assert!(result.is_ok(), "parse failed: {:?}", result.err());
@@ -1414,7 +1407,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_vertCRS() {
+    fn parse_vert_crs() {
         let wkt = r#"VERTCRS["EGM96 height",VDATUM["EGM96 geoid"],CS[vertical,1],AXIS["up",up],LENGTHUNIT["metre",1,ID["EPSG",9001]],ID["EPSG",5773]]"#;
         let result = parse_wkt2(wkt);
         assert!(result.is_ok(), "parse failed: {:?}", result.err());
