@@ -23,6 +23,15 @@ fn agent_list_succeeds() {
 }
 
 #[test]
+fn agent_project_passes_end_to_end() {
+    // The project suite validates E15 (QGS project save/load) acceptance
+    // criteria: save a multi-layer project to .qgs, read it back, compare
+    // layer count, names, CRS, styles, and viewport.
+    let code = cli::run(&["project".to_string()]);
+    assert_eq!(code, ExitCode::SUCCESS, "project must pass");
+}
+
+#[test]
 fn agent_unknown_suite_fails() {
     let code = cli::run(&["no-such-suite".to_string()]);
     assert_eq!(code, ExitCode::from(2));
