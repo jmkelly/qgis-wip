@@ -45,6 +45,7 @@ axum = "=0.8.9"
 tokio = { version = "=1.49.0", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "signal"] }
 bytes = "=1.11.0"
 thiserror = "=2.0.12"
+rusqlite = "=0.32.1"
 tracing = "=0.1.44"
 png = "=0.17.16"
 geo = "=0.28.0"
