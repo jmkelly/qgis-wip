@@ -129,6 +129,7 @@ bd prime                # Refresh Beads context
 
 ## Verification Infrastructure
 
+Start with [CRATES.md](CRATES.md) for the crate → purpose → verify-command map.
 This project has a composable verification CLI at `./verify` and an OpenCode skill
 at `.opencode/skills/verify-qgis/`. Use them to prove behavior — never chain `cargo`
 commands ad-hoc in a prompt.
