@@ -145,6 +145,67 @@ pub fn read_gpkg(path: impl AsRef<Path>) -> Result<Vec<Feature>, String> {
     Ok(all)
 }
 
+use crate::Feature as CommonFeature;
+use crate::FeatureCollection;
+use qgis_geometry::Geometry as QGeom;
+
+fn shape_to_geometry(s: &Shape) -> Option<QGeom> {
+    use qgis_geometry::{LineString, MultiLineString, Point, Polygon};
+    match s {
+        Shape::Null => None,
+        Shape::Point { x, y } => Some(QGeom::Point(Point::new(*x, *y))),
+        Shape::Polyline { parts } => {
+            if parts.is_empty() {
+                None
+            } else if parts.len() == 1 {
+                let pts: Vec<Point> = parts[0].iter().map(|(x, y)| Point::new(*x, *y)).collect();
+                Some(QGeom::LineString(LineString::new(pts)))
+            } else {
+                let lines: Vec<LineString> = parts
+                    .iter()
+                    .map(|part| LineString::new(part.iter().map(|(x, y)| Point::new(*x, *y)).collect()))
+                    .collect();
+                Some(QGeom::MultiLineString(MultiLineString::new(lines)))
+            }
+        }
+        Shape::Polygon { parts } => {
+            if parts.is_empty() {
+                Some(QGeom::Polygon(Polygon::new(vec![])))
+            } else if parts.len() == 1 {
+                let pts: Vec<Point> = parts[0].iter().map(|(x, y)| Point::new(*x, *y)).collect();
+                Some(QGeom::Polygon(Polygon::new(pts)))
+            } else {
+                let exterior: Vec<Point> = parts[0].iter().map(|(x, y)| Point::new(*x, *y)).collect();
+                let holes: Vec<Vec<Point>> = parts[1..]
+                    .iter()
+                    .map(|p| p.iter().map(|(x, y)| Point::new(*x, *y)).collect())
+                    .collect();
+                Some(QGeom::Polygon(Polygon::with_holes(exterior, holes)))
+            }
+        }
+    }
+}
+
+pub fn read_to_features(path: impl AsRef<Path>) -> Result<FeatureCollection, String> {
+    let feats = read_gpkg(path)?;
+    let mut out = FeatureCollection::new();
+    for f in feats {
+        out.features.push(CommonFeature {
+            ty: "Feature".into(),
+            geometry: shape_to_geometry(&f.geometry),
+            properties: f.attributes,
+        });
+    }
+    Ok(out)
+}
+
+pub struct GpkgProvider;
+impl crate::FeatureProvider for GpkgProvider {
+    fn read_to_features(&self, path: &str) -> Result<FeatureCollection, String> {
+        read_to_features(path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,66 +268,5 @@ mod tests {
             fc.features[0].properties.get("name"),
             Some(&serde_json::json!("hq"))
         );
-    }
-}
-
-use crate::Feature as CommonFeature;
-use crate::FeatureCollection;
-use qgis_geometry::Geometry as QGeom;
-
-fn shape_to_geometry(s: &Shape) -> Option<QGeom> {
-    use qgis_geometry::{LineString, MultiLineString, Point, Polygon};
-    match s {
-        Shape::Null => None,
-        Shape::Point { x, y } => Some(QGeom::Point(Point::new(*x, *y))),
-        Shape::Polyline { parts } => {
-            if parts.is_empty() {
-                None
-            } else if parts.len() == 1 {
-                let pts: Vec<Point> = parts[0].iter().map(|(x, y)| Point::new(*x, *y)).collect();
-                Some(QGeom::LineString(LineString::new(pts)))
-            } else {
-                let lines: Vec<LineString> = parts
-                    .iter()
-                    .map(|part| LineString::new(part.iter().map(|(x, y)| Point::new(*x, *y)).collect()))
-                    .collect();
-                Some(QGeom::MultiLineString(MultiLineString::new(lines)))
-            }
-        }
-        Shape::Polygon { parts } => {
-            if parts.is_empty() {
-                Some(QGeom::Polygon(Polygon::new(vec![])))
-            } else if parts.len() == 1 {
-                let pts: Vec<Point> = parts[0].iter().map(|(x, y)| Point::new(*x, *y)).collect();
-                Some(QGeom::Polygon(Polygon::new(pts)))
-            } else {
-                let exterior: Vec<Point> = parts[0].iter().map(|(x, y)| Point::new(*x, *y)).collect();
-                let holes: Vec<Vec<Point>> = parts[1..]
-                    .iter()
-                    .map(|p| p.iter().map(|(x, y)| Point::new(*x, *y)).collect())
-                    .collect();
-                Some(QGeom::Polygon(Polygon::with_holes(exterior, holes)))
-            }
-        }
-    }
-}
-
-pub fn read_to_features(path: impl AsRef<Path>) -> Result<FeatureCollection, String> {
-    let feats = read_gpkg(path)?;
-    let mut out = FeatureCollection::new();
-    for f in feats {
-        out.features.push(CommonFeature {
-            ty: "Feature".into(),
-            geometry: shape_to_geometry(&f.geometry),
-            properties: f.attributes,
-        });
-    }
-    Ok(out)
-}
-
-pub struct GpkgProvider;
-impl crate::FeatureProvider for GpkgProvider {
-    fn read_to_features(&self, path: &str) -> Result<FeatureCollection, String> {
-        read_to_features(path)
     }
 }

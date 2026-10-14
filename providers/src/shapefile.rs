@@ -1,4 +1,5 @@
 //! Shapefile (SHP) + DBF record reader producing features.
+#![allow(clippy::items_after_test_module)]
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -177,6 +178,7 @@ pub fn read_shapefile(path: impl AsRef<Path>) -> Result<Vec<Feature>, String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module, clippy::approx_constant)]
 mod tests {
     use super::*;
     use serde_json::json;
