@@ -290,8 +290,7 @@ pub fn handle_get_feature_info(query: &QueryParameters) -> Result<FcgiResponse> 
         "application/json" | "application/geo+json" => format_geojson(&results),
         _ => {
             // The WMS formatter is HTML-first and already escapes attributes.
-            let html = render_html(&results, &params.info_format);
-            html
+            render_html(&results, &params.info_format)
         }
     };
 
