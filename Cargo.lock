@@ -3183,6 +3183,7 @@ dependencies = [
  "qgis-crs",
  "qgis-geometry",
  "qgis-providers",
+ "qgis-spatial-index",
  "qgis-style",
  "serde_json",
 ]

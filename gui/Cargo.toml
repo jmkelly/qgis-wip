@@ -11,5 +11,6 @@ qgis-geometry = { path = "../geometry" }
 qgis-crs = { path = "../crs" }
 qgis-core = { path = "../core" }
 qgis-providers = { path = "../providers" }
+qgis-spatial-index = { path = "../spatial-index" }
 qgis-style = { path = "../style" }
 serde_json = { workspace = true }
