@@ -13,12 +13,13 @@ use iced::{Element, Length, Task};
 use qgis_core::{Feature, Layer, LayerRegistry, Value};
 use qgis_crs::{Camera, SrsId};
 use qgis_providers::geojson;
-use qgis_style::{parse_qml_file, StyleModel};
+use qgis_style::StyleModel;
 
 use crate::dialogs;
 use crate::layer_panel;
 use crate::layer_renderer::{camera_for_extent, load_shapefile_as_layer};
 use crate::map_program::MapProgram;
+use crate::style_dialog;
 
 /// Main application state.
 #[derive(Debug)]
@@ -96,6 +97,8 @@ pub enum Message {
     // Style dialog
     /// Style path input changed.
     StyleDialogInputChanged(String),
+    /// A `.qml` file was picked from the style file list.
+    StyleFilePicked(String),
     /// Confirm style assignment.
     StyleDialogConfirm,
 
@@ -190,6 +193,12 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
 
         // ---- Style dialog ----
         Message::StyleDialogInputChanged(path) => {
+            if let Some(Dialog::StyleAssign { path: p, .. }) = &mut state.dialog {
+                *p = path;
+            }
+            Task::none()
+        }
+        Message::StyleFilePicked(path) => {
             if let Some(Dialog::StyleAssign { path: p, .. }) = &mut state.dialog {
                 *p = path;
             }
@@ -330,6 +339,16 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
 /// View function for the application.
 pub fn view(state: &AppState) -> Element<'_, Message> {
     if let Some(dialog) = &state.dialog {
+        // The style-assignment dialog lives in its own module (bead qgis-yjr)
+        // so it can grow a real `.qml` file picker without touching the other
+        // modal dialogs.
+        if let Dialog::StyleAssign { layer_index, path } = dialog {
+            let layer_name = state
+                .registry
+                .layer_at(*layer_index)
+                .map(|layer| layer.name.as_str());
+            return style_dialog::view(layer_name, path);
+        }
         return dialogs::view(dialog);
     }
 
@@ -486,14 +505,31 @@ fn json_to_value(value: &serde_json::Value) -> Value {
 }
 
 /// Assigns a `.qml` style to a layer by index.
+///
+/// A layer index with no layer is rejected by name (never recorded as a
+/// dangling style), and the `.qml` path is validated before parsing so a
+/// non-style file is refused rather than silently ignored. On success the
+/// status names the renderer the style declares (single symbol, categorized,
+/// or graduated) so the user can see all three renderer types are supported.
 fn assign_style(state: &mut AppState, layer_index: usize, path: &str) {
-    match parse_qml_file(path) {
+    if state.registry.layer_at(layer_index).is_none() {
+        state.dialog = Some(Dialog::Error {
+            message: format!("No layer at index {} to style", layer_index),
+        });
+        return;
+    }
+
+    match style_dialog::parse_style(path) {
         Ok(model) => {
+            let summary = style_dialog::describe_renderer(&model.renderer);
             state.styles.insert(layer_index, model);
             if let Some(layer) = state.registry.layer_at_mut(layer_index) {
                 layer.style_ref = Some(path.to_string());
             }
-            state.status = format!("Style applied to layer {}: {}", layer_index, path);
+            state.status = format!(
+                "Style applied to layer {}: {} [{}]",
+                layer_index, path, summary
+            );
         }
         Err(e) => {
             state.dialog = Some(Dialog::Error { message: e });
@@ -929,5 +965,232 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&qgs_path);
+    }
+
+    // -----------------------------------------------------------------------
+    // Bead qgis-yjr (E14.4): style assignment changes what the canvas renders
+    // -----------------------------------------------------------------------
+
+    /// The fill colors of a rendered geometry list, in order.
+    fn fill_colors(geoms: &[qgis_style::symbols::CanvasGeometry]) -> Vec<qgis_style::Color> {
+        geoms
+            .iter()
+            .filter_map(|g| match g {
+                qgis_style::symbols::CanvasGeometry::Fill { color, .. } => Some(*color),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Loads a file through the file-open dialog and returns the fresh state.
+    fn state_with_layer(path: &str) -> AppState {
+        let mut state = AppState::default();
+        let _ = update(&mut state, Message::OpenFileDialog);
+        let _ = update(&mut state, Message::FileDialogInputChanged(path.to_string()));
+        let _ = update(&mut state, Message::FileDialogConfirm);
+        assert_eq!(state.registry.len(), 1, "one layer should load from {path}");
+        state
+    }
+
+    /// Renders layer 0 with the style currently recorded for it (or the
+    /// default style when none has been assigned).
+    fn render_layer_0(state: &AppState) -> Vec<qgis_style::symbols::CanvasGeometry> {
+        use crate::layer_renderer::render_layer;
+        use crate::map_program::default_style_for_layer;
+
+        let layer = state.registry.layer_at(0).unwrap();
+        let viewport = (1024.0, 768.0);
+        let camera = state.camera.with_viewport(viewport);
+        let style = match state.styles.get(&0) {
+            Some(s) => s.clone(),
+            None => default_style_for_layer(layer),
+        };
+        render_layer(layer, &style, &camera, viewport)
+    }
+
+    /// Assigns `qml` to layer 0 through the style-assignment dialog path.
+    fn assign_style_to_layer_0(state: &mut AppState, qml: &str) {
+        let _ = update(state, Message::AssignStyleDialog);
+        let _ = update(state, Message::StyleDialogInputChanged(qml.to_string()));
+        let _ = update(state, Message::StyleDialogConfirm);
+        assert!(
+            state.styles.contains_key(&0),
+            "style should be applied to layer 0 (status: {})",
+            state.status
+        );
+    }
+
+    /// Acceptance (bead qgis-yjr): load a point layer, assign `styles/points.qml`
+    /// (categorized on `Class`), and prove the rendered markers change.
+    #[test]
+    fn assigning_categorized_style_changes_rendering() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let geojson = root
+            .join("../provider-samples/points.geojson")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let qml = root.join("../styles/points.qml").to_str().unwrap().to_string();
+
+        let mut state = state_with_layer(&geojson);
+        let before = render_layer_0(&state);
+        assert!(!before.is_empty(), "the default style should render markers");
+
+        assign_style_to_layer_0(&mut state, &qml);
+        let after = render_layer_0(&state);
+
+        assert!(
+            !after.is_empty(),
+            "the categorized style should render the matched classes"
+        );
+        assert_ne!(
+            before, after,
+            "rendered geometry must change after assigning a categorized style"
+        );
+        assert!(
+            state.status.contains("categorized on \"Class\""),
+            "status should name the renderer type and attribute: {}",
+            state.status
+        );
+    }
+
+    /// Acceptance (bead qgis-yjr): a single-symbol `.qml` changes the fill.
+    #[test]
+    fn assigning_single_symbol_style_changes_rendering() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let shp = root
+            .join("../provider-samples/france_parts.shp")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let qml = root
+            .join("../styles/inverted_polys_single.qml")
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let mut state = state_with_layer(&shp);
+        let before = fill_colors(&render_layer_0(&state));
+
+        assign_style_to_layer_0(&mut state, &qml);
+        let after = fill_colors(&render_layer_0(&state));
+
+        assert_ne!(before, after);
+        let single_teal = qgis_style::Color {
+            r: 76,
+            g: 143,
+            b: 160,
+            a: 255,
+        };
+        assert!(
+            after.contains(&single_teal),
+            "single symbol fill should be teal, got {after:?}"
+        );
+        assert!(
+            state.status.contains("single symbol"),
+            "status should name the renderer type: {}",
+            state.status
+        );
+    }
+
+    /// Acceptance (bead qgis-yjr): a graduated `.qml` changes the marker fill
+    /// by classifying the numeric `Importance` attribute.
+    #[test]
+    fn assigning_graduated_style_changes_rendering() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let geojson = root
+            .join("../provider-samples/points.geojson")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let qml = root
+            .join("../styles/points_graduated_symbol.qml")
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let mut state = state_with_layer(&geojson);
+        // Graduated symbols are markers, not fills; compare the whole geometry.
+        let before = render_layer_0(&state);
+
+        assign_style_to_layer_0(&mut state, &qml);
+        let after = render_layer_0(&state);
+
+        assert_ne!(before, after, "graduated style must change the geometry");
+        assert!(
+            state.status.contains("graduated on \"Importance\""),
+            "status should name the renderer type and attribute: {}",
+            state.status
+        );
+    }
+
+    /// Picking a `.qml` file from the dialog's file list fills the path input.
+    #[test]
+    fn style_file_picked_sets_dialog_path() {
+        let mut state = AppState {
+            dialog: Some(Dialog::StyleAssign {
+                layer_index: 0,
+                path: String::new(),
+            }),
+            ..Default::default()
+        };
+        let _ = update(
+            &mut state,
+            Message::StyleFilePicked("../styles/polys.qml".into()),
+        );
+        match &state.dialog {
+            Some(Dialog::StyleAssign { path, .. }) => assert_eq!(path, "../styles/polys.qml"),
+            other => panic!("expected StyleAssign, got {:?}", other),
+        }
+    }
+
+    /// A style assigned to a layer index that does not exist is rejected by
+    /// name: no dangling style entry, and an error dialog explains why.
+    #[test]
+    fn assign_style_rejects_missing_layer_by_name() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let qml = root.join("../styles/polys.qml").to_str().unwrap().to_string();
+
+        let mut state = AppState {
+            dialog: Some(Dialog::StyleAssign {
+                layer_index: 3,
+                path: qml,
+            }),
+            ..Default::default()
+        };
+        let _ = update(&mut state, Message::StyleDialogConfirm);
+
+        assert!(
+            state.styles.is_empty(),
+            "no style should be recorded for a missing layer"
+        );
+        match &state.dialog {
+            Some(Dialog::Error { message }) => {
+                assert!(message.contains('3'), "error should name the layer: {message}");
+            }
+            other => panic!("expected an error dialog, got {:?}", other),
+        }
+    }
+
+    /// A non-`.qml` path is rejected by name before parsing.
+    #[test]
+    fn assign_style_rejects_non_qml_by_name() {
+        let mut state = AppState {
+            dialog: Some(Dialog::StyleAssign {
+                layer_index: 0,
+                path: "../styles/not-a-style.txt".into(),
+            }),
+            ..Default::default()
+        };
+        state
+            .registry
+            .add_layer(Layer::new("a", SrsId::from_epsg(4326)));
+        let _ = update(&mut state, Message::StyleDialogConfirm);
+
+        assert!(state.styles.is_empty());
+        match &state.dialog {
+            Some(Dialog::Error { message }) => assert!(message.contains("qml"), "{message}"),
+            other => panic!("expected an error dialog, got {:?}", other),
+        }
     }
 }

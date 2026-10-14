@@ -19,6 +19,7 @@ pub mod map_program;
 pub mod print_layout;
 pub mod project;
 pub mod style_apply;
+pub mod style_dialog;
 
 pub use layer_renderer::{
     apply_opacity, build_spatial_index, camera_for_extent, cull_visible_features, draw_layer,
