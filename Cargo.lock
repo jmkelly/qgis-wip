@@ -3269,6 +3269,7 @@ name = "qgis-validate"
 version = "0.1.0"
 dependencies = [
  "qgis-geometry",
+ "qgis-style",
  "serde_json",
 ]
 
