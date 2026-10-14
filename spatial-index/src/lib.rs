@@ -148,7 +148,6 @@ impl Ord for OrderedF64 {
 /// ```
 pub struct STRtree<T> {
     nodes: Vec<Node<T>>,
-    free_list: Vec<NodeId>,
     root: Option<NodeId>,
     size: usize,
     node_capacity: usize,
@@ -163,7 +162,6 @@ impl<T> STRtree<T> {
     pub fn new(node_capacity: usize) -> Self {
         Self {
             nodes: Vec::new(),
-            free_list: Vec::new(),
             root: None,
             size: 0,
             node_capacity: node_capacity.max(2),
@@ -192,27 +190,16 @@ impl<T> STRtree<T> {
 
     /// Returns the minimum number of entries per non-root node.
     fn min_entries(&self) -> usize {
-        (self.node_capacity + 1) / 2
+        self.node_capacity.div_ceil(2)
     }
 
     // -- Arena management ---------------------------------------------------
 
-    /// Allocates a new node, reusing a freed slot if available.
+    /// Allocates a new node.
     fn alloc_node(&mut self, is_leaf: bool) -> NodeId {
-        if let Some(id) = self.free_list.pop() {
-            self.nodes[id] = Node::new(is_leaf);
-            id
-        } else {
-            let id = self.nodes.len();
-            self.nodes.push(Node::new(is_leaf));
-            id
-        }
-    }
-
-    /// Frees a node, returning its slot to the free list.
-    fn free_node(&mut self, id: NodeId) {
-        self.nodes[id] = Node::new(true);
-        self.free_list.push(id);
+        let id = self.nodes.len();
+        self.nodes.push(Node::new(is_leaf));
+        id
     }
 
     // -- Bbox helpers -------------------------------------------------------
@@ -369,22 +356,6 @@ impl<T> STRtree<T> {
         best.map(|(_, data)| data)
     }
 
-    // -- Internal: collect entries -------------------------------------------
-
-    /// Collects all leaf entries from a subtree into a flat vec.
-    fn collect_entries(&self, node_id: NodeId, out: &mut Vec<(BoundingBox, T)>)
-    where
-        T: Clone,
-    {
-        let node = &self.nodes[node_id];
-        for entry in &node.entries {
-            match entry {
-                Entry::Leaf { bbox, data } => out.push((*bbox, data.clone())),
-                Entry::Internal { child, .. } => self.collect_entries(*child, out),
-            }
-        }
-    }
-
     // -- Internal: find entry ------------------------------------------------
 
     /// Finds the leaf node and entry index for a given (bbox, data) pair.
@@ -466,8 +437,8 @@ impl<T: Clone> STRtree<T> {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        let num_leaves = (sorted.len() + self.node_capacity - 1) / self.node_capacity;
-        let slice_size = (sorted.len() + num_leaves - 1) / num_leaves;
+        let num_leaves = sorted.len().div_ceil(self.node_capacity);
+        let slice_size = sorted.len().div_ceil(num_leaves);
 
         let mut current_level: Vec<NodeId> = Vec::new();
         for slice in sorted.chunks(slice_size) {
