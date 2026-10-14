@@ -1,11 +1,18 @@
-//! Integration tests against the real fixture store at
-//! `rust/fixtures/` (resolved relative to this crate via
-//! `CARGO_MANIFEST_DIR`, overridable with `QGIS_FIXTURES_MANIFEST`).
+//! Integration tests against the real fixture store at the workspace root
+//! (resolved relative to this crate via `CARGO_MANIFEST_DIR`, overridable
+//! with `QGIS_FIXTURES_MANIFEST`).
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use qgis_fixtures::{Category, Manifest};
+
+const STORE_CATEGORY_DIRS: [&str; 4] = [
+    "qgs-projects",
+    "styles",
+    "expressions",
+    "provider-samples",
+];
 
 #[test]
 fn default_manifest_covers_all_categories() {
@@ -46,9 +53,9 @@ fn every_store_file_is_cataloged() {
     let manifest = Manifest::load_default().expect("default manifest parses");
 
     let mut on_disk = BTreeSet::new();
-    collect_files(manifest.store_root(), manifest.store_root(), &mut on_disk);
-    on_disk.remove(Path::new("manifest.toml"));
-    on_disk.remove(Path::new("README.md"));
+    for dir in STORE_CATEGORY_DIRS {
+        collect_files(manifest.store_root(), &manifest.store_root().join(dir), &mut on_disk);
+    }
 
     let mut cataloged: BTreeSet<PathBuf> = BTreeSet::new();
     for entry in manifest.entries() {

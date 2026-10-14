@@ -1,7 +1,7 @@
 # qgis-fixtures
 
-Loads and validates the fixture store catalog at `rust/fixtures/`
-(see that directory for provenance and licensing). Pure Rust, zero
+Loads and validates the fixture store catalog at `manifest.toml` in the
+workspace root. Pure Rust, zero
 dependencies — the manifest is parsed with a hand-rolled parser for a
 constrained TOML subset (`src/parser.rs`).
 
@@ -19,7 +19,7 @@ for fixture in manifest.by_category(Category::Style) {
 ```
 
 - `Manifest::load_default()` reads `$QGIS_FIXTURES_MANIFEST` if set,
-  else `rust/fixtures/manifest.toml` relative to this crate.
+  else `../manifest.toml` relative to this crate.
 - `Manifest::validate()` checks every entry file — and sidecar —
   exists on disk and reports all problems at once.
 - `Category` mirrors the store subdirectories: `qgs-project`, `style`,
