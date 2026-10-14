@@ -47,7 +47,78 @@ impl Feature {
         }
     }
     pub fn extent(&self) -> Option<(f64, f64, f64, f64)> {
-        None
+        let geom = self.geometry.as_ref()?;
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        let mut any = false;
+        fn visit_point(p: &qgis_geometry::Point, min_x: &mut f64, min_y: &mut f64, max_x: &mut f64, max_y: &mut f64, any: &mut bool) {
+            *min_x = min_x.min(p.x);
+            *min_y = min_y.min(p.y);
+            *max_x = max_x.max(p.x);
+            *max_y = max_y.max(p.y);
+            *any = true;
+        }
+        fn visit_geom(g: &qgis_geometry::Geometry, min_x: &mut f64, min_y: &mut f64, max_x: &mut f64, max_y: &mut f64, any: &mut bool) {
+            use qgis_geometry::Geometry;
+            match g {
+                Geometry::Point(p) => visit_point(p, min_x, min_y, max_x, max_y, any),
+                Geometry::LineString(ls) => {
+                    for p in ls.points() {
+                        visit_point(p, min_x, min_y, max_x, max_y, any);
+                    }
+                }
+                Geometry::Polygon(poly) => {
+                    for p in &poly.exterior {
+                        visit_point(p, min_x, min_y, max_x, max_y, any);
+                    }
+                    for ring in &poly.interiors {
+                        for p in ring {
+                            visit_point(p, min_x, min_y, max_x, max_y, any);
+                        }
+                    }
+                }
+                Geometry::MultiPoint(mp) => {
+                    for p in mp.points() {
+                        visit_point(p, min_x, min_y, max_x, max_y, any);
+                    }
+                }
+                Geometry::MultiLineString(mls) => {
+                    for ls in mls.lines() {
+                        for p in ls.points() {
+                            visit_point(p, min_x, min_y, max_x, max_y, any);
+                        }
+                    }
+                }
+                Geometry::MultiPolygon(mp) => {
+                    for poly in mp.polygons() {
+                        for p in &poly.exterior {
+                            visit_point(p, min_x, min_y, max_x, max_y, any);
+                        }
+                        for ring in &poly.interiors {
+                            for p in ring {
+                                visit_point(p, min_x, min_y, max_x, max_y, any);
+                            }
+                        }
+                    }
+                }
+                Geometry::GeometryCollection(gc) => {
+                    for g in gc.geometries() {
+                        visit_geom(g, min_x, min_y, max_x, max_y, any);
+                    }
+                }
+            }
+        }
+        visit_geom(geom, &mut min_x, &mut min_y, &mut max_x, &mut max_y, &mut any);
+        if any {
+            Some((min_x, min_y, max_x, max_y))
+        } else {
+            None
+        }
+    }
+    pub fn bounding_box(&self) -> Option<(f64, f64, f64, f64)> {
+        self.extent()
     }
 }
 
