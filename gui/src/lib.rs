@@ -6,9 +6,19 @@
 #![forbid(unsafe_code)]
 
 pub mod attribute_table;
+pub mod layer_renderer;
 pub mod map_canvas;
 pub mod print_layout;
 pub mod style_apply;
+
+pub use layer_renderer::{
+    apply_opacity, build_spatial_index, camera_for_extent, cull_visible_features, draw_layer,
+    load_shapefile_as_layer, paint_layer, render_layer, render_layer_paths,
+    render_layer_with_index, viewport_bounding_box, visible_feature_indices,
+    visible_feature_indices_with_index, DefaultLayerRenderer, LayerRenderer, LineLayerRenderer,
+    LineRenderer, PointLayerRenderer, PointRenderer, PolygonLayerRenderer, PolygonRenderer,
+    VectorLayerRenderer,
+};
 
 /// Application state for the main window.
 #[derive(Debug, Default)]

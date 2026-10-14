@@ -23,7 +23,8 @@ pub fn to_line_dash(dash: &DashPattern) -> Vec<f32> {
     dash.segments().iter().map(|s| *s as f32).collect()
 }
 
-/// Builds an iced path from canvas geometry, closing every ring.
+/// Builds an iced path from canvas geometry, closing filled rings and closed
+/// stroke outlines while keeping open polylines open.
 ///
 /// Rings with fewer than two vertices produce an empty path.
 pub fn to_path(geometry: &CanvasGeometry) -> Path {
@@ -32,6 +33,7 @@ pub fn to_path(geometry: &CanvasGeometry) -> Path {
         .iter()
         .filter(|ring| ring.len() >= 2)
         .collect();
+    let is_fill = matches!(geometry, CanvasGeometry::Fill { .. });
     Path::new(|builder| {
         for ring in &rings {
             let first = ring[0];
@@ -39,7 +41,9 @@ pub fn to_path(geometry: &CanvasGeometry) -> Path {
             for p in ring.iter().skip(1) {
                 builder.line_to(iced::Point::new(p.x as f32, p.y as f32));
             }
-            builder.close();
+            if is_fill || ring.first() == ring.last() {
+                builder.close();
+            }
         }
     })
 }
