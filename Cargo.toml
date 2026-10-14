@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "geometry",
+    "core",
     "spatial-index",
     "crs",
     "expression",

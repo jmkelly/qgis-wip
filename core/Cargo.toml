@@ -1,0 +1,10 @@
+[package]
+name = "qgis-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Core Layer and Feature model for QGIS Rust port"
+
+[dependencies]
+qgis-geometry = { path = "../geometry" }
+qgis-crs = { path = "../crs" }

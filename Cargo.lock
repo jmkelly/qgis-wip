@@ -3106,6 +3106,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "qgis-core"
+version = "0.1.0"
+dependencies = [
+ "qgis-crs",
+ "qgis-geometry",
+]
+
+[[package]]
 name = "qgis-crs"
 version = "0.1.0"
 dependencies = [
