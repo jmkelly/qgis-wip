@@ -49,12 +49,11 @@ pub fn coverage_id(layer: &ProjectLayer) -> String {
 
 /// Builds the `ServiceType` section for WCS.
 fn service_type_section() -> String {
-    format!(
-        r#"    <ServiceType>urn:ogc:service:wcs</ServiceType>
+    r#"    <ServiceType>urn:ogc:service:wcs</ServiceType>
     <ServiceTypeVersion>2.0.1</ServiceTypeVersion>
     <ServiceTypeVersion>1.1.1</ServiceTypeVersion>
     <ServiceTypeVersion>1.0.0</ServiceTypeVersion>"#
-    )
+        .to_string()
 }
 
 /// Builds the `OperationsMetadata` section for WCS.
