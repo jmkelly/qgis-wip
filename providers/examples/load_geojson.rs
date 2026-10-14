@@ -16,7 +16,6 @@ fn main() {
                     Some(Geometry::MultiPolygon(_)) => "MultiPolygon",
                     Some(Geometry::GeometryCollection(_)) => "GeometryCollection",
                     None => "None",
-                    _ => "Other",
                 };
                 println!("  feature {}: {} (props: {})", i, geom_kind, f.properties.len());
             }
