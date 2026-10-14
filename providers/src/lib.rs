@@ -61,26 +61,10 @@ pub mod dbase;
 pub mod vsi;
 pub mod vrt;
 pub mod shapefile;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn placeholder_name() {
-        let p = PlaceholderProvider::new("test");
-        assert_eq!(p.name(), "test");
-    }
-
-    #[test]
-    fn placeholder_valid() {
-        let p = PlaceholderProvider::new("test");
-        assert!(p.is_valid());
-    }
-}
-
 pub mod geojson;
 pub mod gpkg;
+pub mod postgis;
+pub mod sqlserver;
 
 /// Unified provider trait: all providers return FeatureCollections.
 pub trait FeatureProvider {
@@ -98,4 +82,21 @@ pub mod driver_manager {
         pub fn list(&self) -> Vec<&str> { self.providers.values().map(|s| s.as_str()).collect() }
     }
     impl Default for DriverManager { fn default() -> Self { Self::new() } }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn placeholder_name() {
+        let p = PlaceholderProvider::new("test");
+        assert_eq!(p.name(), "test");
+    }
+
+    #[test]
+    fn placeholder_valid() {
+        let p = PlaceholderProvider::new("test");
+        assert!(p.is_valid());
+    }
 }

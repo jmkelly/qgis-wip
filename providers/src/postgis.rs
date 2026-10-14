@@ -578,11 +578,30 @@ pub fn decode_postgis_geometry_cell(
 
 /// Decodes raw binary EWKB / ISO WKB bytes into a [`Geometry`] and optional SRID.
 pub fn decode_ewkb(bytes: &[u8]) -> Result<(Geometry, Option<u32>), String> {
-    let (header, _) = qgis_geometry::wkb::read_header(bytes)
-        .map_err(|e| format!("invalid PostGIS EWKB header: {e}"))?;
+    if bytes.len() < 5 {
+        return Err("PostGIS EWKB too short (< 5 bytes)".to_string());
+    }
+    let le = bytes[0] == 1;
+    let raw_type = if le {
+        u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]])
+    } else {
+        u32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]])
+    };
+    let srid = if (raw_type & 0x2000_0000) != 0 {
+        if bytes.len() < 9 {
+            return Err("truncated SRID in PostGIS EWKB".to_string());
+        }
+        Some(if le {
+            u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]])
+        } else {
+            u32::from_be_bytes([bytes[5], bytes[6], bytes[7], bytes[8]])
+        })
+    } else {
+        None
+    };
     let geom = qgis_geometry::read_wkb(bytes)
         .map_err(|e| format!("failed to decode PostGIS EWKB geometry: {e}"))?;
-    Ok((geom, header.srid))
+    Ok((geom, srid))
 }
 
 /// Decodes a hex-encoded EWKB string (with optional `\x` or `0x` prefix) into a [`Geometry`] and optional SRID.
