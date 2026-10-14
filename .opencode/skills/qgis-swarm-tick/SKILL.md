@@ -36,8 +36,17 @@ branch is fully merged before deleting:
 
 ```bash
 paseo_list_workspaces
-git branch --merged master  # per worktree repo, before rm -rf
+paseo_list_agents --cwd <worktree-path>  # per candidate worktree before archive/rm
+git branch --merged master               # per worktree repo, before rm -rf
 ```
+
+- **Verify no running agent in the worktree (cwd-filtered check):**
+  Unfiltered `paseo_list_agents` may omit active agents living in worktree
+  workspaces due to list limits/sorting. Before ANY worktree archive or
+  `rm -rf`, run `paseo_list_agents` filtered by `cwd=<worktree path>`
+  (and/or `paseo_get_agent_status` on the agent IDs recorded in the bead
+  notes). Confirm that `status=running` means **leave alone** (per
+  procedure 1e) — never archive or remove a worktree with a running agent.
 
 Skipping this step is what caused the historical worktree pile-up.
 
