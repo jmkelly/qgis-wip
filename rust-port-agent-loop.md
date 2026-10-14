@@ -74,7 +74,7 @@ bd show <id>   # read description + acceptance + parent epic
 For each ready bead, create an isolated worktree workspace:
 
 ```bash
-paseo_create_workspace(mode=branch-off, isolation=worktree, worktreeSlug=<bead-id>)
+paseo workspace create --mode branch-off --isolation worktree --worktree-slug <bead-id>
 ```
 
 Spawn an implementation subagent per bead (foreground, wait for finish). Each implementer

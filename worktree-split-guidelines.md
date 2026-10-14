@@ -201,15 +201,15 @@ readable. Merge commits add noise and obscure the feature commit history.
 
 ```bash
 # Wave 1 — independent crates, no shared files
-paseo_create_workspace(worktreeSlug=qgis-s4i.5)   # geometry
-paseo_create_workspace(worktreeSlug=qgis-qxu.2)   # CRS
-paseo_create_workspace(worktreeSlug=qgis-3ce.1)   # expression
+paseo workspace create --isolation worktree --worktree-slug qgis-s4i.5   # geometry
+paseo workspace create --isolation worktree --worktree-slug qgis-qxu.2   # CRS
+paseo workspace create --isolation worktree --worktree-slug qgis-3ce.1   # expression
 
 # --- wait for wave 1 to merge ---
 
 # Wave 2 — depends on wave 1 APIs (now locked)
-paseo_create_workspace(worktreeSlug=qgis-nna.1)   # providers
-paseo_create_workspace(worktreeSlug=qgis-e9r.1)   # analysis
+paseo workspace create --isolation worktree --worktree-slug qgis-nna.1   # providers
+paseo workspace create --isolation worktree --worktree-slug qgis-e9r.1   # analysis
 ```
 
 ## Connection to pstack principles
