@@ -131,6 +131,9 @@ pub struct Layer {
     pub visible: bool,
     pub opacity: f32,
     pub style_ref: Option<String>,
+    /// Data source path or URI this layer was loaded from, used by project
+    /// persistence (E15) to reload the layer when a `.qgs` project is opened.
+    pub source: Option<String>,
 }
 
 impl Layer {
@@ -142,7 +145,14 @@ impl Layer {
             visible: true,
             opacity: 1.0,
             style_ref: None,
+            source: None,
         }
+    }
+
+    /// Sets the data source path/URI this layer was loaded from.
+    pub fn with_source(mut self, source: impl Into<String>) -> Self {
+        self.source = Some(source.into());
+        self
     }
     pub fn feature_count(&self) -> usize {
         self.features.len()
@@ -276,6 +286,7 @@ mod tests {
         assert!(layer.visible);
         assert_eq!(layer.opacity, 1.0);
         assert!(layer.style_ref.is_none());
+        assert!(layer.source.is_none());
         assert_eq!(layer.feature_count(), 0);
         assert!(layer.extent().is_none());
 
@@ -284,6 +295,12 @@ mod tests {
         assert_eq!(layer.feature_count(), 1);
         assert_eq!(layer.extent(), Some((1.0, 2.0, 1.0, 2.0)));
         assert_eq!(layer.spatial_index(), vec![0]);
+    }
+
+    #[test]
+    fn layer_with_source_records_data_source() {
+        let layer = Layer::new("roads", SrsId::from_epsg(4326)).with_source("/data/roads.shp");
+        assert_eq!(layer.source.as_deref(), Some("/data/roads.shp"));
     }
 
     #[test]

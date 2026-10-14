@@ -29,6 +29,8 @@ pub struct AppState {
     pub styles: HashMap<usize, StyleModel>,
     /// Viewport transform for the map canvas.
     pub camera: Camera,
+    /// Project-level CRS.
+    pub project_crs: SrsId,
     /// Generation counter for viewport reset.
     pub generation: u64,
     /// Currently selected layer index in the panel.
@@ -47,6 +49,7 @@ impl Default for AppState {
             registry: LayerRegistry::new(),
             styles: HashMap::new(),
             camera: Camera::new((0.0, 0.0), 3.0, (1024.0, 768.0)),
+            project_crs: SrsId::from_epsg(4326),
             generation: 0,
             selected_layer: None,
             dialog: None,
@@ -229,7 +232,9 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
                 _ => return Task::none(),
             };
             state.dialog = None;
-            state.status = format!("Project open not yet implemented: {}", path);
+            if let Err(e) = crate::project::open_project(state, &path) {
+                state.dialog = Some(Dialog::Error { message: e });
+            }
             Task::none()
         }
 
@@ -424,8 +429,9 @@ fn load_layer_from_path(state: &mut AppState, path: &str) {
     };
 
     match result {
-        Ok(layer) => {
+        Ok(mut layer) => {
             let extent = layer.extent();
+            layer.source = Some(path.to_string());
             state.registry.add_layer(layer);
             state.selected_layer = Some(state.registry.len() - 1);
             if let Some(extent) = extent {
@@ -441,7 +447,7 @@ fn load_layer_from_path(state: &mut AppState, path: &str) {
 }
 
 /// Loads a GeoJSON file into a [`Layer`].
-fn load_geojson_as_layer(path: &str) -> Result<Layer, String> {
+pub(crate) fn load_geojson_as_layer(path: &str) -> Result<Layer, String> {
     let data = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let fc = geojson::FeatureCollection::from_json(&data)?;
     let name = path
@@ -484,6 +490,9 @@ fn assign_style(state: &mut AppState, layer_index: usize, path: &str) {
     match parse_qml_file(path) {
         Ok(model) => {
             state.styles.insert(layer_index, model);
+            if let Some(layer) = state.registry.layer_at_mut(layer_index) {
+                layer.style_ref = Some(path.to_string());
+            }
             state.status = format!("Style applied to layer {}: {}", layer_index, path);
         }
         Err(e) => {
@@ -492,34 +501,12 @@ fn assign_style(state: &mut AppState, layer_index: usize, path: &str) {
     }
 }
 
-/// Saves a `.qgs` project file (minimal XML format).
+/// Saves a `.qgs` project file.
 ///
-/// Serializes layer names, visibility, opacity, style references, and
-/// the current viewport (center + zoom).
+/// Serializes the project CRS, layer entries (data source, CRS, visibility,
+/// opacity, style reference), and the map viewport. See [`crate::project`].
 fn save_project(state: &AppState, path: &str) -> Result<(), String> {
-    let mut xml = String::new();
-    xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-    xml.push_str("<qgis version=\"4.0.0\">\n");
-    xml.push_str("  <title>QGIS Rust Project</title>\n");
-    xml.push_str("  <projectLayers>\n");
-    for (idx, layer) in state.registry.iter().enumerate() {
-        let style_ref = state
-            .styles
-            .get(&idx)
-            .map(|s| format!("{:?}", s.renderer))
-            .unwrap_or_else(|| "default".into());
-        xml.push_str(&format!(
-            "    <layer name=\"{}\" visible=\"{}\" opacity=\"{}\" style=\"{}\"/>\n",
-            layer.name, layer.visible, layer.opacity, style_ref
-        ));
-    }
-    xml.push_str("  </projectLayers>\n");
-    xml.push_str(&format!(
-        "  <view center=\"{:.6},{:.6}\" zoom=\"{:.4}\"/>\n",
-        state.camera.center.0, state.camera.center.1, state.camera.zoom
-    ));
-    xml.push_str("</qgis>\n");
-    std::fs::write(path, xml).map_err(|e| e.to_string())
+    crate::project::save_project(state, path)
 }
 
 // ---------------------------------------------------------------------------
@@ -824,10 +811,123 @@ mod tests {
         assert!(saved.contains("<qgis"));
         assert!(saved.contains("france_parts"));
         assert!(
-            saved.contains("Categorized") || saved.contains("Single"),
-            "style reference should be saved"
+            saved.contains("polys.qml"),
+            "the layer's style reference should be saved"
         );
         assert!(saved.contains("<view"));
+        let _ = std::fs::remove_file(&qgs_path);
+    }
+
+    /// Bead qgis-mzw acceptance (E15): save a project with multiple styled
+    /// layers and restore it with all state intact — layer names, order, CRS,
+    /// visibility, opacity and features; per-layer styles; the project CRS;
+    /// and the viewport. Driven through the same message pipeline the GUI
+    /// event loop uses.
+    #[test]
+    fn acceptance_project_save_load_round_trip() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let shp_path = root
+            .join("../provider-samples/france_parts.shp")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let geojson_path = root
+            .join("../provider-samples/points.geojson")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let polys_qml = root
+            .join("../styles/polys.qml")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let points_qml = root
+            .join("../styles/points.qml")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let qgs_path = std::env::temp_dir().join("qgis-mzw-roundtrip.qgs");
+        let qgs_path = qgs_path.to_str().unwrap().to_string();
+
+        // ---- build a project with two styled layers ----
+        let mut src = AppState::default();
+
+        let _ = update(&mut src, Message::OpenFileDialog);
+        let _ = update(&mut src, Message::FileDialogInputChanged(shp_path.clone()));
+        let _ = update(&mut src, Message::FileDialogConfirm);
+        let _ = update(&mut src, Message::OpenFileDialog);
+        let _ = update(&mut src, Message::FileDialogInputChanged(geojson_path.clone()));
+        let _ = update(&mut src, Message::FileDialogConfirm);
+        assert_eq!(src.registry.len(), 2, "two layers should load");
+
+        src.selected_layer = Some(0);
+        let _ = update(&mut src, Message::AssignStyleDialog);
+        let _ = update(&mut src, Message::StyleDialogInputChanged(polys_qml.clone()));
+        let _ = update(&mut src, Message::StyleDialogConfirm);
+
+        src.selected_layer = Some(1);
+        let _ = update(&mut src, Message::AssignStyleDialog);
+        let _ = update(&mut src, Message::StyleDialogInputChanged(points_qml.clone()));
+        let _ = update(&mut src, Message::StyleDialogConfirm);
+        assert_eq!(src.styles.len(), 2, "both layers should be styled");
+
+        // Distinguish the viewport and per-layer state from the defaults.
+        src.camera = Camera::new((0.5, 0.25), 7.5, (1024.0, 768.0));
+        src.project_crs = SrsId::from_epsg(3857);
+        let _ = update(&mut src, Message::LayerVisibilityToggled(1));
+        src.registry.layer_at_mut(1).unwrap().opacity = 0.5;
+
+        // ---- save ----
+        let _ = update(&mut src, Message::SaveProjectDialog);
+        let _ = update(&mut src, Message::ProjectPathChanged(qgs_path.clone()));
+        let _ = update(&mut src, Message::ProjectSaveConfirm);
+        let saved = std::fs::read_to_string(&qgs_path).expect("project file should be written");
+        assert!(saved.contains("<qgis"), "should be QGS XML");
+
+        // ---- restore into a fresh application state ----
+        let mut dst = AppState::default();
+        let _ = update(&mut dst, Message::OpenProjectDialog);
+        let _ = update(&mut dst, Message::ProjectPathChanged(qgs_path.clone()));
+        let _ = update(&mut dst, Message::ProjectOpenConfirm);
+        assert!(
+            dst.dialog.is_none(),
+            "opening a valid project should not error: {:?}",
+            dst.dialog
+        );
+
+        // Layers: count, order, names, CRS, visibility, opacity, features, source.
+        assert_eq!(dst.registry.len(), src.registry.len());
+        for i in 0..src.registry.len() {
+            let a = src.registry.layer_at(i).unwrap();
+            let b = dst.registry.layer_at(i).unwrap();
+            assert_eq!(a.name, b.name, "layer {i} name");
+            assert_eq!(a.crs, b.crs, "layer {i} crs");
+            assert_eq!(a.visible, b.visible, "layer {i} visibility");
+            assert_eq!(a.opacity, b.opacity, "layer {i} opacity");
+            assert_eq!(a.feature_count(), b.feature_count(), "layer {i} features");
+            assert_eq!(a.source, b.source, "layer {i} source");
+        }
+
+        // Styles: identical parsed models, keyed by the same layer index.
+        assert_eq!(dst.styles, src.styles, "styles should round-trip");
+
+        // Project CRS.
+        assert_eq!(dst.project_crs, src.project_crs, "project CRS");
+
+        // Viewport: center + zoom.
+        assert!(
+            (dst.camera.zoom - src.camera.zoom).abs() < 1e-9,
+            "zoom should round-trip"
+        );
+        assert!(
+            (dst.camera.center.0 - src.camera.center.0).abs() < 1e-9,
+            "viewport center x should round-trip"
+        );
+        assert!(
+            (dst.camera.center.1 - src.camera.center.1).abs() < 1e-9,
+            "viewport center y should round-trip"
+        );
+
         let _ = std::fs::remove_file(&qgs_path);
     }
 }

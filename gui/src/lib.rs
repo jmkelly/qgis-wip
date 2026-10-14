@@ -17,6 +17,7 @@ pub mod layer_renderer;
 pub mod map_canvas;
 pub mod map_program;
 pub mod print_layout;
+pub mod project;
 pub mod style_apply;
 
 pub use layer_renderer::{

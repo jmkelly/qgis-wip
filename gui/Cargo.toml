@@ -13,4 +13,5 @@ qgis-core = { path = "../core" }
 qgis-providers = { path = "../providers" }
 qgis-spatial-index = { path = "../spatial-index" }
 qgis-style = { path = "../style" }
+roxmltree = { workspace = true }
 serde_json = { workspace = true }
