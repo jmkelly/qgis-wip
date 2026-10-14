@@ -70,11 +70,20 @@ fn assert_geometry_sequence(fc: &FeatureCollection, expected: &[&str]) -> Result
     Ok(())
 }
 
+/// Every feature must carry every expected attribute field. Checking only the
+/// first feature would let a provider that drops fields partway through the
+/// collection pass the gate, so the schema is verified feature by feature.
 fn assert_fields(fc: &FeatureCollection, fields: &[&str]) -> Result<(), String> {
-    let first = fc.features.first().ok_or("no features to inspect")?;
-    for field in fields {
-        if !first.properties.contains_key(*field) {
-            return Err(format!("missing attribute field: {field}"));
+    if fc.features.is_empty() {
+        return Err("no features to inspect".into());
+    }
+    for (index, feature) in fc.features.iter().enumerate() {
+        for field in fields {
+            if !feature.properties.contains_key(*field) {
+                return Err(format!(
+                    "feature {index} is missing attribute field: {field}"
+                ));
+            }
         }
     }
     Ok(())
@@ -137,4 +146,59 @@ pub fn checks() -> Vec<(String, CheckFn)> {
         ("postgis-load".into(), Box::new(|| postgis_load().into())),
         ("sqlserver-load".into(), Box::new(|| sqlserver_load().into())),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use qgis_providers::Feature;
+
+    fn feature_with(fields: &[&str]) -> Feature {
+        let mut properties = std::collections::BTreeMap::new();
+        for field in fields {
+            properties.insert((*field).to_string(), serde_json::json!(null));
+        }
+        Feature {
+            ty: "Feature".into(),
+            geometry: None,
+            properties,
+        }
+    }
+
+    /// A provider that gets the schema right on the first feature but drops a
+    /// field later must fail the gate — the check covers every feature.
+    #[test]
+    fn fields_must_be_present_on_every_feature() {
+        let fc = FeatureCollection {
+            ty: "FeatureCollection".into(),
+            features: vec![
+                feature_with(&["name", "value"]),
+                feature_with(&["name"]),
+            ],
+        };
+        let err = assert_fields(&fc, &["name", "value"])
+            .expect_err("a dropped field must fail the check");
+        assert!(
+            err.contains("feature 1") && err.contains("value"),
+            "error must name the offending feature and field, got: {err}"
+        );
+    }
+
+    #[test]
+    fn all_features_carrying_the_fields_pass() {
+        let fc = FeatureCollection {
+            ty: "FeatureCollection".into(),
+            features: vec![feature_with(&["name", "value"]); 3],
+        };
+        assert!(assert_fields(&fc, &["name", "value"]).is_ok());
+    }
+
+    #[test]
+    fn empty_collection_is_an_error() {
+        let fc = FeatureCollection {
+            ty: "FeatureCollection".into(),
+            features: vec![],
+        };
+        assert!(assert_fields(&fc, &["name"]).is_err());
+    }
 }
