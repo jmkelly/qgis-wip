@@ -1,0 +1,16 @@
+{
+  "source": "recorded on Rust host (C++ reference binary QGIS_CPP_BINARY unset; see ADR-0004)",
+  "unit": "nanoseconds per single benchmark invocation",
+  "margin_factor": 5.0,
+  "baselines": {
+    "render/polygon_fill": 5000000,
+    "render/layer_render": 5000000,
+    "render/labeling": 5000000,
+    "index/rtree_insert": 50000000,
+    "index/rtree_query": 5000000,
+    "expression/parse": 50000,
+    "expression/evaluate": 50000,
+    "raster/reproject": 500000,
+    "raster/render": 500000
+  }
+}
