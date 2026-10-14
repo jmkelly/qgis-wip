@@ -226,6 +226,33 @@ impl<T> STRtree<T> {
         self.nodes[node_id].bbox = bbox;
     }
 
+    /// Recomputes bboxes for every node on `path` (root..=leaf), bottom-up.
+    ///
+    /// A parent stores its own copy of each child's bbox in the child's
+    /// `Entry::Internal`; `update_bbox` alone does not pick up a child whose
+    /// bbox changed, because it unions the *stored* entry bboxes. This walks
+    /// from the leaf upward, syncing each parent's entry for its child to the
+    /// child's current bbox before recomputing the parent. Without it, a bbox
+    /// that grows on insert (or shrinks on remove) leaves stale ancestor
+    /// entries, and bbox-pruned searches silently lose items.
+    fn refresh_path_entries(&mut self, path: &[NodeId]) {
+        for i in (0..path.len()).rev() {
+            let node_id = path[i];
+            self.update_bbox(node_id);
+            if i > 0 {
+                let parent_id = path[i - 1];
+                let child_bbox = self.nodes[node_id].bbox;
+                for entry in &mut self.nodes[parent_id].entries {
+                    if let Entry::Internal { bbox, child } = entry {
+                        if *child == node_id {
+                            *bbox = child_bbox;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // -- Path finding --------------------------------------------------------
 
     /// Finds the path of node ids from the root to `target`.
@@ -512,12 +539,14 @@ impl<T: Clone> STRtree<T> {
 
         // Insert into the leaf.
         self.nodes[leaf_id].entries.push(Entry::Leaf { bbox, data });
-        self.update_bbox(leaf_id);
         self.size += 1;
 
-        // Handle overflow.
+        // Handle overflow, otherwise propagate the (possibly grown) bbox up
+        // the path so ancestor entries never go stale.
         if self.nodes[leaf_id].entries.len() > self.node_capacity {
             self.split_and_propagate(path);
+        } else {
+            self.refresh_path_entries(&path);
         }
     }
 
@@ -538,11 +567,10 @@ impl<T: Clone> STRtree<T> {
             self.nodes[leaf_id].entries.remove(entry_idx);
             self.size -= 1;
 
-            // Update bboxes up the tree.
+            // Update bboxes up the tree (bottom-up, syncing each parent's
+            // entry for its child to the child's current bbox).
             let path = self.find_path_to_node(leaf_id);
-            for &node_id in &path {
-                self.update_bbox(node_id);
-            }
+            self.refresh_path_entries(&path);
 
             true
         } else {
@@ -647,6 +675,11 @@ impl<T: Clone> STRtree<T> {
             self.update_bbox(new_root);
             self.root = Some(new_root);
         }
+
+        // Splitting a leaf grows its parent's bbox even when the parent does
+        // not itself overflow; refresh the whole path bottom-up so no ancestor
+        // keeps a stale entry and bbox-pruned searches cannot lose items.
+        self.refresh_path_entries(&path);
     }
 
     /// Splits a node using the quadratic split algorithm.
@@ -683,11 +716,20 @@ impl<T: Clone> STRtree<T> {
 
         while !remaining.is_empty() {
             // If one group needs all remaining entries to meet minimum, assign them.
+            // The group bbox must absorb every appended entry, otherwise the split
+            // node's bbox under-covers its children and later bbox-pruned searches
+            // (query, remove, choose_leaf) lose those items.
             if group1.len() + remaining.len() == min_entries {
+                for entry in &remaining {
+                    bbox1 = bbox1.union(&entry.bbox());
+                }
                 group1.append(&mut remaining);
                 break;
             }
             if group2.len() + remaining.len() == min_entries {
+                for entry in &remaining {
+                    bbox2 = bbox2.union(&entry.bbox());
+                }
                 group2.append(&mut remaining);
                 break;
             }
@@ -888,6 +930,31 @@ mod tests {
         }
     }
 
+    #[test]
+    fn insert_that_grows_leaf_without_split_propagates_bbox() {
+        // Regression (qgis-f5y): after a split creates an internal root,
+        // inserting into a leaf whose bbox grows but does not overflow must
+        // still refresh the parent's stored entry for that leaf. Previously
+        // the parent kept the old (smaller) bbox, so a bbox-pruned query
+        // silently lost the newly inserted item.
+        let mut tree: STRtree<i32> = STRtree::new(3);
+        // Force a split: root leaf overflows at the 4th insert.
+        for i in 0..4 {
+            tree.insert(BoundingBox::new(i as f64 * 10.0, 0.0, i as f64 * 10.0 + 1.0, 1.0), i);
+        }
+        assert!(!tree.nodes[tree.root.unwrap()].is_leaf);
+        // This insert grows the right-hand leaf's bbox without splitting it.
+        tree.insert(BoundingBox::new(40.0, 0.0, 41.0, 1.0), 4);
+
+        // Every item, including the last, must be findable.
+        for i in 0..5 {
+            let x = i as f64 * 10.0;
+            let results = tree.query_bbox(&BoundingBox::new(x, 0.0, x + 1.0, 1.0));
+            assert_eq!(results.len(), 1, "item {i} lost after non-splitting insert");
+            assert_eq!(*results[0], i);
+        }
+    }
+
     // -- Remove --------------------------------------------------------------
 
     #[test]
@@ -1068,7 +1135,10 @@ mod tests {
         assert_eq!(tree.len(), 1000);
 
         let results = tree.query_bbox(&BoundingBox::new(50.0, 50.0, 160.0, 160.0));
-        assert_eq!(results.len(), 121); // 11x11 grid (edge contact)
+        // Grid step is 10 over 32 columns/rows, so the query spans cell
+        // minima 50..=160 inclusive (x=160's box touches query.max_x=160,
+        // and edge contact counts as intersection) => 12x12 = 144.
+        assert_eq!(results.len(), 144);
     }
 
     // -- Duplicate bboxes -----------------------------------------------------
