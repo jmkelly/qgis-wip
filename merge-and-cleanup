@@ -34,7 +34,7 @@
 #   4. Merge the branch into <target> in the main checkout.
 #   5. Push <target>.
 #   6. bd close <bead>.
-#   7. paseo archive workspace <id>.
+#   7. paseo workspace archive <id> (non-fatal: worktree removal still runs).
 #   8. rm -rf the worktree and confirm it is gone.
 #
 # Exit codes: 0 = merged and cleaned up, 1 = a step failed, 2 = usage error.
@@ -192,9 +192,13 @@ else
 fi
 
 # 7. Archive the workspace before deleting its worktree out from under it.
+#    Archiving is best-effort: a failure warns but does not abort, so step 8
+#    (worktree removal) always runs.
 if [ -n "$workspace" ]; then
-    step "paseo archive workspace $workspace"
-    run paseo archive workspace "$workspace" || fail "archiving workspace $workspace failed"
+    step "paseo workspace archive $workspace"
+    if ! run paseo workspace archive "$workspace"; then
+        echo "--- merge-and-cleanup: WARNING: archiving workspace $workspace failed, continuing with worktree removal ---" >&2
+    fi
 else
     step "skipping paseo archive (no --workspace)"
 fi
