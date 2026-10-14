@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Uniform worker handoff: run the verification gate once, then mark the bead needs-merge.
+#
+# Usage:
+#   ./finish-bead <bead-id> [--crate <name>] [--skip-verify] [--dry-run]
+#   ./finish-bead --help
+#
+# Steps:
+#   1. Fail early on bead-id typos (bd show <bead-id>).
+#   2. Run the crate verification gate once:
+#        ./verify test [--crate <name>]
+#        ./verify clippy [--crate <name>]
+#      Skipped with --skip-verify when the gate already passed this session.
+#      A gate failure aborts before the bead is touched.
+#   3. Record the uniform handoff:
+#        bd update <bead-id> --add-label needs-merge \
+#          --append-notes "Done. Branch: <current-branch>"
+#
+# Exit codes: 0 = handoff recorded, 1 = verification or handoff failed, 2 = usage error.
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+die() { echo "error: $*" >&2; exit 2; }
+
+usage() {
+    sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+}
+
+bead="" crate="" skip_verify=0 dry_run=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --help|-h|help) usage ;;
+        --crate)
+            [ $# -ge 2 ] || die "usage: ./finish-bead <bead-id> [--crate <name>] [--skip-verify] [--dry-run]"
+            crate="$2"; shift 2 ;;
+        --skip-verify) skip_verify=1; shift ;;
+        --dry-run) dry_run=1; shift ;;
+        --*) die "unknown flag: $1" ;;
+        *)
+            if [ -n "$bead" ]; then
+                die "unexpected argument: $1 (bead-id already set to '$bead')"
+            fi
+            bead="$1"; shift ;;
+    esac
+done
+
+[ -n "$bead" ] || die "usage: ./finish-bead <bead-id> [--crate <name>] [--skip-verify] [--dry-run]"
+
+# 1. Fail early on typos: the bead must exist.
+bd show "$bead" >/dev/null || { echo "error: bead '$bead' not found (bd show failed)" >&2; exit 1; }
+
+# 2. Verification gate, run once. Any failure aborts before labelling.
+scope=()
+[ -n "$crate" ] && scope=(--crate "$crate")
+if [ "$skip_verify" -eq 1 ]; then
+    echo "--- finish-bead: skipping verification gate (--skip-verify) ---"
+else
+    echo "--- finish-bead: ./verify test ${scope[*]:-} ---"
+    ./verify test "${scope[@]+"${scope[@]}"}"
+    echo "--- finish-bead: ./verify clippy ${scope[*]:-} ---"
+    ./verify clippy "${scope[@]+"${scope[@]}"}"
+fi
+
+# 3. Uniform handoff note + label.
+branch="$(git branch --show-current 2>/dev/null || true)"
+[ -n "$branch" ] || branch="bd/$bead"
+note="Done. Branch: $branch"
+
+if [ "$dry_run" -eq 1 ]; then
+    echo "--- finish-bead: dry run, would execute: ---"
+    echo "bd update $bead --add-label needs-merge --append-notes \"$note\""
+else
+    bd update "$bead" --add-label needs-merge --append-notes "$note"
+    echo "--- finish-bead: $bead marked needs-merge ($branch) ---"
+fi
