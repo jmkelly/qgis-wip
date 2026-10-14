@@ -96,20 +96,35 @@ fn synthetic_test_layer(name: &str, style: &StyleModel) -> Layer {
 }
 
 /// Interactive canvas state when `--window` is passed.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct LayerCanvasApp {
     layer: Layer,
     style: StyleModel,
     camera: Camera,
+}
+
+#[derive(Debug)]
+struct CanvasInteractionState {
+    camera: Option<Camera>,
     panning: bool,
     last_cursor: Point,
+}
+
+impl Default for CanvasInteractionState {
+    fn default() -> Self {
+        Self {
+            camera: None,
+            panning: false,
+            last_cursor: Point::ORIGIN,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 enum Message {}
 
 impl canvas::Program<Message> for LayerCanvasApp {
-    type State = (Camera, bool, Point);
+    type State = CanvasInteractionState;
 
     fn update(
         &self,
@@ -118,29 +133,26 @@ impl canvas::Program<Message> for LayerCanvasApp {
         bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> (EventStatus, Option<Message>) {
-        if state.0.viewport == (0.0, 0.0) {
-            state.0 = self.camera;
-        }
-        state.0.viewport = (bounds.width as f64, bounds.height as f64);
+        let cam = state.camera.get_or_insert(self.camera);
+        cam.viewport = (bounds.width as f64, bounds.height as f64);
 
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                state.1 = true;
-                state.2 = cursor.position_in(bounds).unwrap_or(Point::ORIGIN);
+                state.panning = true;
+                state.last_cursor = cursor.position_in(bounds).unwrap_or(Point::ORIGIN);
                 (EventStatus::Captured, None)
             }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
-                state.1 = false;
+                state.panning = false;
                 (EventStatus::Captured, None)
             }
-            Event::Mouse(mouse::Event::CursorMoved { position }) if state.1 => {
-                let before = state
-                    .0
-                    .screen_to_world((state.2.x as f64, state.2.y as f64));
-                let after = state.0.screen_to_world((position.x as f64, position.y as f64));
-                state.0.center.0 += before.0 - after.0;
-                state.0.center.1 += before.1 - after.1;
-                state.2 = position;
+            Event::Mouse(mouse::Event::CursorMoved { position }) if state.panning => {
+                let before =
+                    cam.screen_to_world((state.last_cursor.x as f64, state.last_cursor.y as f64));
+                let after = cam.screen_to_world((position.x as f64, position.y as f64));
+                cam.center.0 += before.0 - after.0;
+                cam.center.1 += before.1 - after.1;
+                state.last_cursor = position;
                 (EventStatus::Captured, None)
             }
             Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
@@ -151,11 +163,11 @@ impl canvas::Program<Message> for LayerCanvasApp {
                 if lines != 0.0 {
                     if let Some(pos) = cursor.position_in(bounds) {
                         let screen = (pos.x as f64, pos.y as f64);
-                        let before = state.0.screen_to_world(screen);
-                        state.0.zoom = (state.0.zoom + lines as f64 * 0.5).clamp(-2.0, 24.0);
-                        let after = state.0.screen_to_world(screen);
-                        state.0.center.0 += before.0 - after.0;
-                        state.0.center.1 += before.1 - after.1;
+                        let before = cam.screen_to_world(screen);
+                        cam.zoom = (cam.zoom + lines as f64 * 0.5).clamp(-2.0, 24.0);
+                        let after = cam.screen_to_world(screen);
+                        cam.center.0 += before.0 - after.0;
+                        cam.center.1 += before.1 - after.1;
                     }
                     return (EventStatus::Captured, None);
                 }
@@ -174,11 +186,7 @@ impl canvas::Program<Message> for LayerCanvasApp {
         _cursor: mouse::Cursor,
     ) -> Vec<IcedGeometry<iced::Renderer>> {
         let viewport = (bounds.width as f64, bounds.height as f64);
-        let cam = if state.0.viewport == (0.0, 0.0) {
-            self.camera.with_viewport(viewport)
-        } else {
-            state.0.with_viewport(viewport)
-        };
+        let cam = state.camera.unwrap_or(self.camera).with_viewport(viewport);
         let mut frame = Frame::new(renderer, bounds.size());
         frame.fill(
             &IcedPath::rectangle(Point::ORIGIN, bounds.size()),
@@ -271,30 +279,12 @@ fn main() {
             layer,
             style,
             camera,
-            panning: false,
-            last_cursor: Point::ORIGIN,
         };
-        let _ = iced::application(
-            move || {
-                (
-                    LayerCanvasApp {
-                        layer: initial_app.layer.clone(),
-                        style: initial_app.style.clone(),
-                        camera: initial_app.camera,
-                        panning: initial_app.panning,
-                        last_cursor: initial_app.last_cursor,
-                    },
-                    iced::Task::none(),
-                )
-            },
-            update,
-            view,
-        )
-        .title("QGIS Layer Renderer")
-        .window(iced::window::Settings {
-            size: Size::new(viewport.0 as f32, viewport.1 as f32),
-            ..iced::window::Settings::default()
-        })
-        .run();
+        let _ = iced::application("QGIS Layer Renderer", update, view)
+            .window(iced::window::Settings {
+                size: Size::new(viewport.0 as f32, viewport.1 as f32),
+                ..iced::window::Settings::default()
+            })
+            .run_with(move || (initial_app.clone(), iced::Task::none()));
     }
 }

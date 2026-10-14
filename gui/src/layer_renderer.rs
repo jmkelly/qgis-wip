@@ -2,7 +2,7 @@
 //!
 //! This module implements the E13 map rendering pipeline that connects
 //! [`qgis_core::Layer`] and [`qgis_style::StyleModel`] to [`CanvasGeometry`]
-//! and the `iced` [`canvas::Frame`](iced::widget::canvas::Frame):
+//! and the `iced` [`canvas::Frame`]:
 //!
 //! - **E13.1 ([`LayerRenderer`])**: Trait and concrete renderers for point
 //!   ([`PointLayerRenderer`]), line ([`LineLayerRenderer`]), polygon
@@ -15,7 +15,7 @@
 //! - **E13.3 (Symbol rendering to canvas)**: Projects visible geometries
 //!   through [`Camera::lon_lat_to_screen`], applies symbol styling (colors,
 //!   sizes, stroke widths, fill patterns, and layer opacity), and emits
-//!   [`CanvasGeometry`] primitives and `iced` canvas [`Path`](iced::widget::canvas::Path)s.
+//!   [`CanvasGeometry`] primitives and `iced` canvas [`canvas::Path`]s.
 
 use std::f64::consts::PI;
 use std::path::Path;
