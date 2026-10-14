@@ -135,6 +135,7 @@ fn select_member_for_epoch(members: &[EnsembleMember], epoch: f64) -> &EnsembleM
 /// Looks for the first 4-digit number that looks like a year (1970–2099).
 /// Does NOT extract G-codes (e.g., "G1762") as years — use
 /// [`extract_g_code_year`] for that.
+#[allow(dead_code)] // Non-G-code counterpart to `extract_g_code_year`; exercised by unit tests.
 fn extract_year_from_name(name: &str) -> Option<u32> {
     let chars: Vec<char> = name.chars().collect();
     let mut i = 0;
