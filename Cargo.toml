@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "geometry",
     "core",
+    "style",
     "spatial-index",
     "crs",
     "expression",
@@ -48,4 +49,5 @@ tracing = "=0.1.44"
 png = "=0.17.16"
 geo = "=0.28.0"
 regex = "=1.13.1"
+roxmltree = "=0.20.0"
 rand = "=0.8.8"

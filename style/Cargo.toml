@@ -1,0 +1,10 @@
+[package]
+name = "qgis-style"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "QML style engine for QGIS Rust port"
+
+[dependencies]
+qgis-geometry = { path = "../geometry" }
+roxmltree = { workspace = true }
