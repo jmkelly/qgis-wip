@@ -1,6 +1,6 @@
 //! Fixture store catalog for the QGIS Rust port oracle (ADR-0004).
 //!
-//! Loads and validates `rust/fixtures/manifest.toml` — the catalog of
+//! Loads and validates `manifest.toml` — the catalog of
 //! golden input fixtures collected from the QGIS 4 test suite — and
 //! iterates the store by category. Pure Rust, zero dependencies: the
 //! manifest is parsed with a small hand-rolled parser for a constrained
@@ -155,11 +155,11 @@ impl Manifest {
     }
 
     /// Loads the store manifest: `$QGIS_FIXTURES_MANIFEST` if set, else
-    /// `rust/fixtures/manifest.toml` relative to this crate.
+    /// `../manifest.toml` relative to this crate.
     pub fn load_default() -> Result<Manifest, ManifestError> {
         let path = match std::env::var_os("QGIS_FIXTURES_MANIFEST") {
             Some(dir) => PathBuf::from(dir),
-            None => Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/manifest.toml"),
+            None => Path::new(env!("CARGO_MANIFEST_DIR")).join("../manifest.toml"),
         };
         Manifest::load(&path)
     }
