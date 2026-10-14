@@ -78,6 +78,20 @@ impl CrsTransform {
     pub fn from_proj_string(proj_string: &str) -> Result<Self, TransformError> {
         // Route gap-built methods to the native implementations
         let params = crate::projection::ProjParams::parse(proj_string);
+
+        // Compound CRS (horizontal + vertical) is DEFERRED — ADR 0006, bead
+        // qgis-qxu.3.3.4. proj4rs parses `+geoidgrids=` but does not implement
+        // the vertical datum shift, so accepting it would silently drop the
+        // vertical component and return a wrong horizontal-only transform.
+        // Reject the parameter by name instead of approximating.
+        if params.get_str("geoidgrids").is_some() || params.has_flag("geoidgrids") {
+            return Err(TransformError::InvalidProjString(
+                "compound CRS (+geoidgrids) not supported: vertical datum shift is \
+                 deferred (ADR 0006, bead qgis-qxu.3.3.4)"
+                    .to_string(),
+            ));
+        }
+
         match params.get_str("proj") {
             Some("ortho") | Some("qsc") => {
                 let inner = Projection::from_proj_string(proj_string)
