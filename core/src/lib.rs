@@ -173,18 +173,24 @@ impl Layer {
     }
 }
 
-#[derive(Debug, Default)]
+/// Ordered collection of [`Layer`]s backing the layer panel and map canvas.
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct LayerRegistry {
     layers: Vec<Layer>,
 }
 
 impl LayerRegistry {
+    /// Creates an empty `LayerRegistry`.
     pub fn new() -> Self {
         Self { layers: Vec::new() }
     }
+
+    /// Appends a [`Layer`] to the end of the registry.
     pub fn add_layer(&mut self, layer: Layer) {
         self.layers.push(layer);
     }
+
+    /// Removes and returns the [`Layer`] at `index`, or `None` if out of bounds.
     pub fn remove_layer(&mut self, index: usize) -> Option<Layer> {
         if index < self.layers.len() {
             Some(self.layers.remove(index))
@@ -192,6 +198,10 @@ impl LayerRegistry {
             None
         }
     }
+
+    /// Moves the [`Layer`] at `from` to index `to` (clamped to the post-removal length).
+    ///
+    /// Does nothing if `from >= self.len()` or `to > self.len()`.
     pub fn move_layer(&mut self, from: usize, to: usize) {
         if from >= self.layers.len() || to > self.layers.len() {
             return;
@@ -200,23 +210,55 @@ impl LayerRegistry {
         let to = to.min(self.layers.len());
         self.layers.insert(to, l);
     }
+
+    /// Returns a reference to the [`Layer`] at `index`, or `None` if out of bounds.
     pub fn layer_at(&self, index: usize) -> Option<&Layer> {
         self.layers.get(index)
     }
+
+    /// Returns a mutable reference to the [`Layer`] at `index`, or `None` if out of bounds.
     pub fn layer_at_mut(&mut self, index: usize) -> Option<&mut Layer> {
         self.layers.get_mut(index)
     }
+
+    /// Returns an iterator over all visible layers in registry order.
     pub fn iter_visible(&self) -> impl Iterator<Item = &Layer> {
         self.layers.iter().filter(|l| l.visible)
     }
+
+    /// Returns an iterator over all layers in registry order.
+    pub fn iter(&self) -> std::slice::Iter<'_, Layer> {
+        self.layers.iter()
+    }
+
+    /// Returns a mutable iterator over all layers in registry order.
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, Layer> {
+        self.layers.iter_mut()
+    }
+
+    /// Returns the number of layers in the registry.
     pub fn len(&self) -> usize {
         self.layers.len()
     }
+
+    /// Returns `true` if the registry contains no layers.
     pub fn is_empty(&self) -> bool {
         self.layers.is_empty()
     }
+
+    /// Returns a slice of all layers in registry order.
     pub fn layers(&self) -> &[Layer] {
         &self.layers
+    }
+
+    /// Returns a mutable slice of all layers in registry order.
+    pub fn layers_mut(&mut self) -> &mut [Layer] {
+        &mut self.layers
+    }
+
+    /// Removes all layers from the registry.
+    pub fn clear(&mut self) {
+        self.layers.clear();
     }
 }
 
@@ -242,5 +284,80 @@ mod tests {
         assert_eq!(layer.feature_count(), 1);
         assert_eq!(layer.extent(), Some((1.0, 2.0, 1.0, 2.0)));
         assert_eq!(layer.spatial_index(), vec![0]);
+    }
+
+    #[test]
+    fn layer_registry_add_remove_access() {
+        let crs = SrsId::from_epsg(4326);
+        let mut reg = LayerRegistry::new();
+        assert!(reg.is_empty());
+        assert_eq!(reg.len(), 0);
+        assert!(reg.layer_at(0).is_none());
+        assert!(reg.remove_layer(0).is_none());
+
+        reg.add_layer(Layer::new("a", crs));
+        reg.add_layer(Layer::new("b", crs));
+        reg.add_layer(Layer::new("c", crs));
+
+        assert!(!reg.is_empty());
+        assert_eq!(reg.len(), 3);
+        assert_eq!(reg.layer_at(0).unwrap().name, "a");
+        assert_eq!(reg.layer_at(1).unwrap().name, "b");
+        assert_eq!(reg.layer_at(2).unwrap().name, "c");
+        assert!(reg.layer_at(3).is_none());
+
+        let removed = reg.remove_layer(1).unwrap();
+        assert_eq!(removed.name, "b");
+        assert_eq!(reg.len(), 2);
+        assert_eq!(
+            reg.layers().iter().map(|l| l.name.as_str()).collect::<Vec<_>>(),
+            vec!["a", "c"]
+        );
+        assert!(reg.remove_layer(5).is_none());
+    }
+
+    #[test]
+    fn layer_registry_move_and_reorder() {
+        let crs = SrsId::from_epsg(4326);
+        let mut reg = LayerRegistry::new();
+        reg.add_layer(Layer::new("a", crs));
+        reg.add_layer(Layer::new("b", crs));
+        reg.add_layer(Layer::new("c", crs));
+
+        // Move first to last
+        reg.move_layer(0, 2);
+        assert_eq!(
+            reg.layers().iter().map(|l| l.name.as_str()).collect::<Vec<_>>(),
+            vec!["b", "c", "a"]
+        );
+
+        // Move last to first
+        reg.move_layer(2, 0);
+        assert_eq!(
+            reg.layers().iter().map(|l| l.name.as_str()).collect::<Vec<_>>(),
+            vec!["a", "b", "c"]
+        );
+
+        // Out-of-bounds move is a no-op
+        reg.move_layer(10, 0);
+        reg.move_layer(0, 10);
+        assert_eq!(
+            reg.layers().iter().map(|l| l.name.as_str()).collect::<Vec<_>>(),
+            vec!["a", "b", "c"]
+        );
+    }
+
+    #[test]
+    fn layer_registry_iter_visible() {
+        let crs = SrsId::from_epsg(4326);
+        let mut reg = LayerRegistry::new();
+        reg.add_layer(Layer::new("a", crs));
+        reg.add_layer(Layer::new("b", crs));
+        reg.add_layer(Layer::new("c", crs));
+
+        reg.layer_at_mut(1).unwrap().visible = false;
+
+        let visible_names: Vec<&str> = reg.iter_visible().map(|l| l.name.as_str()).collect();
+        assert_eq!(visible_names, vec!["a", "c"]);
     }
 }
