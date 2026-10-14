@@ -1360,6 +1360,50 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
+    // Deferred capability: Compound CRS (bead qgis-qxu.3.3.4, ADR 0006)
+    // -----------------------------------------------------------------------
+    //
+    // ADR 0006 records compound CRS (horizontal + vertical) support as
+    // DEFERRED. The contract for a deferred capability is "rejected by name,
+    // never silently approximated": a compound CRS must fail with an explicit
+    // error, not be accepted with its vertical component dropped. proj4rs
+    // parses `+geoidgrids=` without implementing it, so without this guard a
+    // compound CRS would silently transform as horizontal-only. These tests
+    // pin the rejection so the deferral cannot regress into an
+    // accepted-and-ignored parameter.
+
+    #[test]
+    fn deferred_compound_crs_geoidgrids_rejected_by_name() {
+        // A real QGIS/PROJ compound CRS proj string: WGS 84 horizontal plus
+        // an EGM96 geoid model for the vertical component (`+geoidgrids=`).
+        let result = crate::CrsTransform::from_proj_string(
+            "+proj=longlat +datum=WGS84 +geoidgrids=egm96_15.gtx +vunits=m +no_defs",
+        );
+        assert!(
+            result.is_err(),
+            "compound CRS with +geoidgrids must be rejected, got {result:?}"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("geoidgrids"),
+            "rejection must name the unsupported compound-CRS parameter, got {msg:?}"
+        );
+    }
+
+    #[test]
+    fn deferred_compound_crs_wkt_resolve_rejected() {
+        // The WKT2:2019 COMPD_CS form must also be rejected when converted to
+        // a proj string rather than resolved to a horizontal-only CRS.
+        let wkt = r#"COMPD_CS["WGS 84 + EGM96 height",GEOGCRS["WGS 84",DATUM["World Geodetic System 1984",ELLIPSOID["WGS 84",6378137,298.257223563,ID["EPSG",7030]]],PRIMEM["Greenwich",0,ID["EPSG",8901]],CS[ellipsoidal,2],AXIS["longitude",east],AXIS["latitude",north],ANGLEUNIT["degree",0.0174532925199433,ID["EPSG",9122]],ID["EPSG",4326]],VERTCRS["EGM96 height",VDATUM["EGM96 geoid"],CS[vertical,1],AXIS["up",up],LENGTHUNIT["metre",1,ID["EPSG",9001]],ID["EPSG",5773]],ID["EPSG",5773]]"#;
+        let crs = crate::parse_wkt2(wkt).expect("COMPD_CS fixture must parse");
+        let result = crate::ensemble::resolve_to_proj_string(&crs, None);
+        assert!(
+            result.is_err(),
+            "COMPD_CS must not resolve to a horizontal-only proj string, got {result:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
     // Empty pipeline
     // -----------------------------------------------------------------------
 
