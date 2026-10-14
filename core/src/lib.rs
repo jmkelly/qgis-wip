@@ -123,7 +123,7 @@ impl Feature {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Layer {
     pub name: String,
     pub crs: SrsId,
@@ -148,7 +148,25 @@ impl Layer {
         self.features.len()
     }
     pub fn extent(&self) -> Option<(f64, f64, f64, f64)> {
-        None
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        let mut any = false;
+        for f in &self.features {
+            if let Some((fx0, fy0, fx1, fy1)) = f.extent() {
+                min_x = min_x.min(fx0);
+                min_y = min_y.min(fy0);
+                max_x = max_x.max(fx1);
+                max_y = max_y.max(fy1);
+                any = true;
+            }
+        }
+        if any {
+            Some((min_x, min_y, max_x, max_y))
+        } else {
+            None
+        }
     }
     pub fn spatial_index(&self) -> Vec<usize> {
         (0..self.features.len()).collect()
@@ -199,5 +217,30 @@ impl LayerRegistry {
     }
     pub fn layers(&self) -> &[Layer] {
         &self.layers
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use qgis_geometry::Geometry;
+
+    #[test]
+    fn layer_basics() {
+        let crs = SrsId::from_epsg(4326);
+        let mut layer = Layer::new("roads", crs);
+        assert_eq!(layer.name, "roads");
+        assert_eq!(layer.crs, crs);
+        assert!(layer.visible);
+        assert_eq!(layer.opacity, 1.0);
+        assert!(layer.style_ref.is_none());
+        assert_eq!(layer.feature_count(), 0);
+        assert!(layer.extent().is_none());
+
+        let f = Feature::new(1, Some(Geometry::Point(qgis_geometry::Point::new(1.0, 2.0))));
+        layer.features.push(f.clone());
+        assert_eq!(layer.feature_count(), 1);
+        assert_eq!(layer.extent(), Some((1.0, 2.0, 1.0, 2.0)));
+        assert_eq!(layer.spatial_index(), vec![0]);
     }
 }
