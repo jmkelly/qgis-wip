@@ -33,6 +33,30 @@ impl Provider for PlaceholderProvider {
     }
 }
 
+
+
+/// Common feature type shared by all providers.
+pub use qgis_geometry::Geometry as CommonGeometry;
+
+/// A single feature returned by any provider.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Feature {
+    pub ty: String,
+    pub geometry: Option<qgis_geometry::Geometry>,
+    pub properties: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+/// A collection of features returned by any provider.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeatureCollection {
+    pub ty: String,
+    pub features: Vec<Feature>,
+}
+
+impl FeatureCollection {
+    pub fn new() -> Self { Self { ty: "FeatureCollection".into(), features: vec![] } }
+}
+
 pub mod dbase;
 pub mod vsi;
 pub mod vrt;
@@ -57,6 +81,11 @@ mod tests {
 
 pub mod geojson;
 pub mod gpkg;
+
+/// Unified provider trait: all providers return FeatureCollections.
+pub trait FeatureProvider {
+    fn read_to_features(&self, path: &str) -> Result<FeatureCollection, String>;
+}
 
 pub mod driver_manager {
     use std::collections::BTreeMap;

@@ -2,22 +2,10 @@
 
 use qgis_geometry::Geometry as QGeom;
 use std::collections::BTreeMap;
+pub use crate::Feature;
+pub use crate::FeatureCollection;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Feature {
-    pub ty: String,
-    pub geometry: Option<QGeom>,
-    pub properties: BTreeMap<String, serde_json::Value>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct FeatureCollection {
-    pub ty: String,
-    pub features: Vec<Feature>,
-}
-
-impl FeatureCollection {
-    pub fn new() -> Self { Self { ty: "FeatureCollection".into(), features: vec![] } }
+impl crate::FeatureCollection {
     pub fn to_json(&self) -> Result<String, String> {
         // Serialize properties/geometry via intermediate json.
         let mut features = Vec::new();
@@ -156,4 +144,11 @@ fn geometry_to_json(g: &Option<QGeom>) -> serde_json::Value {
 pub fn read_to_features(path: &str) -> Result<FeatureCollection, String> {
     let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     FeatureCollection::from_json(&content)
+}
+
+pub struct GeoJsonProvider;
+impl crate::FeatureProvider for GeoJsonProvider {
+    fn read_to_features(&self, path: &str) -> Result<crate::FeatureCollection, String> {
+        read_to_features(path)
+    }
 }

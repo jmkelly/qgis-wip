@@ -27,3 +27,16 @@ mod tests {
         assert_eq!(h.srs_id,4326);
     }
 }
+
+use crate::{FeatureCollection};
+
+pub fn read_to_features(_path: &str) -> Result<FeatureCollection, String> {
+    Ok(FeatureCollection::new())
+}
+
+pub struct GpkgProvider;
+impl crate::FeatureProvider for GpkgProvider {
+    fn read_to_features(&self, path: &str) -> Result<FeatureCollection, String> {
+        read_to_features(path)
+    }
+}

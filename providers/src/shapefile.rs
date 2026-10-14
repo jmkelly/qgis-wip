@@ -195,3 +195,59 @@ mod tests {
         assert_eq!(h.version, 1000);
     }
 }
+
+use crate::Feature as CommonFeature;
+use crate::FeatureCollection;
+use qgis_geometry::Geometry as QGeom;
+
+fn shape_to_geometry(s: &Shape) -> Option<QGeom> {
+    use qgis_geometry::{Point, LineString, Polygon, MultiLineString};
+    match s {
+        Shape::Null => None,
+        Shape::Point { x, y } => Some(QGeom::Point(Point::new(*x, *y))),
+        Shape::PointZ { x, y, z } => {
+            let mut p = Point::new(*x, *y);
+            p.z = Some(*z);
+            Some(QGeom::Point(p))
+        }
+        Shape::Polyline { parts } => {
+            if parts.len() == 1 {
+                let pts: Vec<Point> = parts[0].iter().map(|(x,y)| Point::new(*x,*y)).collect();
+                Some(QGeom::LineString(LineString::new(pts)))
+            } else {
+                let lines: Vec<LineString> = parts.iter().map(|part| LineString::new(part.iter().map(|(x,y)| Point::new(*x,*y)).collect())).collect();
+                Some(QGeom::MultiLineString(MultiLineString::new(lines)))
+            }
+        }
+        Shape::Polygon { parts } => {
+            if parts.len() == 1 {
+                let pts: Vec<Point> = parts[0].iter().map(|(x,y)| Point::new(*x,*y)).collect();
+                Some(QGeom::Polygon(Polygon::new(pts)))
+            } else {
+                let exterior: Vec<Point> = parts[0].iter().map(|(x,y)| Point::new(*x,*y)).collect();
+                let holes: Vec<Vec<Point>> = parts[1..].iter().map(|p| p.iter().map(|(x,y)| Point::new(*x,*y)).collect()).collect();
+                Some(QGeom::Polygon(Polygon::with_holes(exterior, holes)))
+            }
+        }
+    }
+}
+
+pub fn read_to_features(path: impl AsRef<std::path::Path>) -> Result<FeatureCollection, String> {
+    let feats = read_shapefile(path)?;
+    let mut out = FeatureCollection::new();
+    for f in feats {
+        out.features.push(CommonFeature {
+            ty: "Feature".into(),
+            geometry: shape_to_geometry(&f.geometry),
+            properties: f.attributes,
+        });
+    }
+    Ok(out)
+}
+
+pub struct ShapefileProvider;
+impl crate::FeatureProvider for ShapefileProvider {
+    fn read_to_features(&self, path: &str) -> Result<FeatureCollection, String> {
+        read_to_features(path)
+    }
+}
