@@ -1303,6 +1303,63 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
+    // Deferred capability: Velocity models (bead qgis-qxu.3.3.3, ADR 0006)
+    // -----------------------------------------------------------------------
+    //
+    // ADR 0006 records PROJ velocity model support (+model=) as DEFERRED.
+    // The contract for a deferred capability is "rejected by name, never
+    // silently approximated": a request that needs a velocity model must
+    // fail with an explicit error, not return an unshifted coordinate. These
+    // tests pin that contract so the deferral cannot silently regress into
+    // an accepted-and-ignored parameter.
+
+    #[test]
+    fn deferred_velocity_model_hgridshift_rejected_by_name() {
+        // A real QGIS-shaped velocity-model pipeline: degrees → radians, an
+        // inverse horizontal grid shift with a velocity model, then back to
+        // degrees. The +model= parameter triggers the velocity-model path.
+        let p = parse(
+            "+proj=pipeline +step +proj=unitconvert +xy_in=deg +xy_out=rad \
+             +step +inv +proj=hgridshift +grids=velocity.tif +model=us_vel \
+             +step +proj=unitconvert +xy_in=rad +xy_out=deg",
+        )
+        .unwrap();
+        let result = execute_pipeline(&p, 45.0, 45.0, 0.0, 0.0);
+        assert!(
+            matches!(result, Err(PipelineError::UnsupportedMethod(ref m)) if m == "hgridshift"),
+            "expected hgridshift to be rejected by name, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn deferred_velocity_model_vgridshift_rejected_by_name() {
+        // A vertical grid shift carrying a +model= velocity parameter must
+        // also be rejected rather than silently treating the model as absent.
+        let p = parse(
+            "+proj=pipeline +step +proj=unitconvert +xy_in=deg +xy_out=rad \
+             +step +inv +proj=vgridshift +grids=vert.tif +model=us_vel \
+             +step +proj=unitconvert +xy_in=rad +xy_out=deg",
+        )
+        .unwrap();
+        let result = execute_pipeline(&p, 45.0, 45.0, 0.0, 0.0);
+        assert!(
+            matches!(result, Err(PipelineError::UnsupportedMethod(ref m)) if m == "vgridshift"),
+            "expected vgridshift to be rejected by name, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn deferred_velocity_model_top_level_hgridshift_rejected() {
+        // A bare +proj=hgridshift CRS carrying +model= must be rejected
+        // rather than silently treated as an identity transform.
+        let result = crate::CrsTransform::from_proj_string("+proj=hgridshift +model=us_vel");
+        assert!(
+            result.is_err(),
+            "top-level hgridshift with +model= must be rejected, got {result:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
     // Empty pipeline
     // -----------------------------------------------------------------------
 
