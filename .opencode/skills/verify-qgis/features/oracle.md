@@ -22,10 +22,12 @@ C++ reached only by shelling out to `$QGIS_CPP_BINARY`.
 |---------|----------|
 | Rust backend output matches golden | `./verify oracle` |
 | C++ backend output matches Rust | `./verify diff <f> --cpp` |
+| Load/style/save pipeline diff report | `./verify agent-oracle` |
 | Golden store integrity | `goldens/` directory has `.expected` files |
 | Backend self-ID stripped in diffs | `output.rs` tests |
 | LCS line diff + unified render | `diff.rs` tests |
 | Fixture loading + canonical echo | `fixture.rs` tests |
+| Pipeline fixture classification + reference diff | `pipeline.rs` tests |
 
 ## Fixture set
 

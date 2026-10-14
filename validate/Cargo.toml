@@ -12,3 +12,4 @@ qgis-providers = { path = "../providers" }
 qgis-style = { path = "../style" }
 qgis-crs = { path = "../crs" }
 qgis-gui = { path = "../gui" }
+qgis-oracle = { path = "../oracle" }

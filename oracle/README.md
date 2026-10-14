@@ -16,6 +16,9 @@ user-supplied binary (`std::process::Command`), never via FFI
 - `src/diff.rs` — LCS line diff with unified rendering
 - `src/goldens.rs` — golden store (`goldens/<fixture-stem>.expected`),
   verify/record modes via `ORACLE_UPDATE_GOLDENS=1`
+- `src/pipeline.rs` — load/style/save pipeline support: classifies
+  geometry/style/project fixtures and diffs their Rust artifacts against
+  the QGIS C++ goldens (`goldens/<kind>/<stem>.expected`)
 - `src/cli.rs` — CLI parsing and execution
 - `fixtures/` — sample inputs
 - `goldens/` — expected outputs (see `goldens/README.md`)
@@ -38,6 +41,23 @@ cargo run -p qgis-oracle -- diff fixtures/trivial.txt --backend-a rust --backend
 
 Exit codes: `0` match/success, `1` outputs differ, `2` usage/backend
 error.
+
+## Load/style/save pipeline (E16.4)
+
+`src/pipeline.rs` extends the harness to the E14 pipeline (load → style →
+save). It classifies a fixture by extension into one of three families —
+`geometry` (`.wkt`), `styles` (`.qml`), `projects` (`.qgs`) — and diffs the
+Rust artifact against the QGIS C++ golden stored at
+`goldens/<kind>/<stem>.expected`. The `qgis-validate` crate drives the real
+`qgis-geometry`/`qgis-style`/`qgis-gui` crates and renders the report:
+
+```sh
+./verify agent-oracle    # per-fixture diff report for geometry, styles, projects
+```
+
+A missing golden is reported as a `skip` naming the path (the orchestrator
+records goldens from the C++ reference with `oracle record`); when
+`QGIS_CPP_BINARY` is set the suite also runs a live Rust-vs-C++ diff.
 
 ## C++ harness (E0)
 
