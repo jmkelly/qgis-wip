@@ -3268,7 +3268,9 @@ dependencies = [
 name = "qgis-validate"
 version = "0.1.0"
 dependencies = [
+ "qgis-crs",
  "qgis-geometry",
+ "qgis-gui",
  "qgis-style",
  "serde_json",
 ]
