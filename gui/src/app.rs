@@ -311,7 +311,7 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
 }
 
 /// View function for the application.
-pub fn view(state: &AppState) -> Element<Message> {
+pub fn view(state: &AppState) -> Element<'_, Message> {
     if let Some(dialog) = &state.dialog {
         return dialogs::view(dialog);
     }
@@ -336,7 +336,7 @@ pub fn view(state: &AppState) -> Element<Message> {
 }
 
 /// Menu bar widget.
-fn menu_bar(_state: &AppState) -> Element<Message> {
+fn menu_bar(_state: &AppState) -> Element<'_, Message> {
     row![
         button(text("Open File")).on_press(Message::OpenFileDialog),
         button(text("Save Project")).on_press(Message::SaveProjectDialog),
@@ -349,7 +349,7 @@ fn menu_bar(_state: &AppState) -> Element<Message> {
 }
 
 /// Map canvas widget.
-fn map_canvas(state: &AppState) -> Element<Message> {
+fn map_canvas(state: &AppState) -> Element<'_, Message> {
     Canvas::new(MapProgram {
         registry: Arc::new(state.registry.clone()),
         styles: Arc::new(state.styles.clone()),
@@ -362,7 +362,7 @@ fn map_canvas(state: &AppState) -> Element<Message> {
 }
 
 /// Status bar widget.
-fn status_bar(state: &AppState) -> Element<Message> {
+fn status_bar(state: &AppState) -> Element<'_, Message> {
     text(&state.status).size(12).into()
 }
 
@@ -492,7 +492,7 @@ fn save_project(state: &AppState, path: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use qgis_geometry::{LineString, Point as GeoPoint};
+    use qgis_geometry::Point as GeoPoint;
 
     #[test]
     fn default_state_is_empty_with_world_view() {
@@ -667,5 +667,89 @@ mod tests {
         update(&mut state, Message::AssignStyleDialog);
         assert!(state.dialog.is_none());
         assert!(state.status.contains("No layers"));
+    }
+
+    /// Acceptance pipeline (bead qgis-3fz): load a shapefile, display it on
+    /// the map canvas, apply a `.qml` style, and save a `.qgs` project —
+    /// driven through the same message pipeline the GUI event loop uses.
+    #[test]
+    fn acceptance_load_display_style_save() {
+        use qgis_style::symbols::CanvasGeometry;
+
+        use crate::layer_renderer::render_layer;
+        use crate::map_program::default_style_for_layer;
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let shp_path = root
+            .join("../provider-samples/france_parts.shp")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let qml_path = root
+            .join("../styles/polys.qml")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let qgs_path = std::env::temp_dir().join("qgis-3fz-acceptance.qgs");
+        let qgs_path = qgs_path.to_str().unwrap().to_string();
+
+        let mut state = AppState::default();
+
+        // 1. Load a shapefile through the file-open dialog path: open the
+        //    dialog, enter the path, confirm — the same event sequence the
+        //    GUI event loop produces.
+        update(&mut state, Message::OpenFileDialog);
+        update(&mut state, Message::FileDialogInputChanged(shp_path.clone()));
+        update(&mut state, Message::FileDialogConfirm);
+        assert_eq!(state.registry.len(), 1, "shapefile should load as one layer");
+        let layer = state.registry.layer_at(0).unwrap().clone();
+        assert_eq!(layer.name, "france_parts");
+        assert!(!layer.features.is_empty(), "layer should have features");
+        assert!(
+            (state.camera.zoom - 3.0).abs() > f64::EPSILON,
+            "camera should fit the loaded extent"
+        );
+        assert!(state.status.contains("Loaded"));
+
+        // 2. Display the layer on the map canvas: the E13 rendering pipeline
+        //    produces canvas geometry (fills/strokes) for the visible
+        //    viewport. (The final `Frame::fill`/`stroke` calls are iced glue
+        //    over the GPU renderer and run in the desktop app.)
+        let viewport = (1024.0, 768.0);
+        let camera = state.camera.with_viewport(viewport);
+        let style = default_style_for_layer(&layer);
+        let paths = render_layer(&layer, &style, &camera, viewport);
+        assert!(
+            paths
+                .iter()
+                .any(|p| matches!(p, CanvasGeometry::Fill { .. } | CanvasGeometry::Stroke { .. })),
+            "visible features should produce canvas geometry"
+        );
+
+        // 3. Apply a .qml style through the style-assignment dialog path:
+        //    open the dialog for the selected layer, enter the path, confirm.
+        update(&mut state, Message::AssignStyleDialog);
+        update(&mut state, Message::StyleDialogInputChanged(qml_path.clone()));
+        update(&mut state, Message::StyleDialogConfirm);
+        assert!(
+            state.styles.contains_key(&0),
+            "style should be applied to layer 0"
+        );
+        assert!(state.status.contains("Style applied"));
+
+        // 4. Save a .qgs project through the project-save dialog path: open
+        //    the dialog, enter the path, confirm.
+        update(&mut state, Message::SaveProjectDialog);
+        update(&mut state, Message::ProjectPathChanged(qgs_path.clone()));
+        update(&mut state, Message::ProjectSaveConfirm);
+        let saved = std::fs::read_to_string(&qgs_path).expect("project file should be written");
+        assert!(saved.contains("<qgis"));
+        assert!(saved.contains("france_parts"));
+        assert!(
+            saved.contains("Categorized") || saved.contains("Single"),
+            "style reference should be saved"
+        );
+        assert!(saved.contains("<view"));
+        let _ = std::fs::remove_file(&qgs_path);
     }
 }

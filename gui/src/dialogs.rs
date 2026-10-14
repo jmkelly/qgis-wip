@@ -3,7 +3,7 @@
 //! Each dialog replaces the main view (simple modal pattern). The dialog
 //! frame provides consistent sizing and centering.
 
-use iced::widget::{button, column, container, row, text, text_input};
+use iced::widget::{button, column, container, row, text, text_input, Column};
 use iced::{alignment, Color, Element, Length};
 
 use crate::app::{Dialog, Message};
@@ -20,7 +20,7 @@ pub fn view(dialog: &Dialog) -> Element<Message> {
 }
 
 /// Shared dialog frame: centered container with consistent sizing.
-fn dialog_frame(title: &str, content: Element<Message>) -> Element<Message> {
+fn dialog_frame<'a>(title: &'a str, content: Column<'a, Message>) -> Element<'a, Message> {
     container(
         column![
             text(title).size(18),
@@ -48,7 +48,7 @@ fn file_open_dialog(path: &str) -> Element<Message> {
             text("Enter the path to a shapefile (.shp), GeoJSON (.geojson), or GeoPackage (.gpkg):"),
             text_input("path/to/file.shp", path)
                 .on_input(Message::FileDialogInputChanged)
-                .on_submit(move |_path| Message::FileDialogConfirm),
+                .on_submit(Message::FileDialogConfirm),
             row![
                 button("Open").on_press(Message::FileDialogConfirm),
                 button("Cancel").on_press(Message::Cancel),
@@ -67,7 +67,7 @@ fn style_assign_dialog(path: &str) -> Element<Message> {
             text("Enter the path to a QML style file (.qml):"),
             text_input("path/to/style.qml", path)
                 .on_input(Message::StyleDialogInputChanged)
-                .on_submit(move |_path| Message::StyleDialogConfirm),
+                .on_submit(Message::StyleDialogConfirm),
             row![
                 button("Apply").on_press(Message::StyleDialogConfirm),
                 button("Cancel").on_press(Message::Cancel),
@@ -86,7 +86,7 @@ fn project_save_dialog(path: &str) -> Element<Message> {
             text("Enter the path for the project file (.qgs):"),
             text_input("project.qgs", path)
                 .on_input(Message::ProjectPathChanged)
-                .on_submit(move |_path| Message::ProjectSaveConfirm),
+                .on_submit(Message::ProjectSaveConfirm),
             row![
                 button("Save").on_press(Message::ProjectSaveConfirm),
                 button("Cancel").on_press(Message::Cancel),
@@ -105,7 +105,7 @@ fn project_open_dialog(path: &str) -> Element<Message> {
             text("Enter the path to an existing project file (.qgs):"),
             text_input("project.qgs", path)
                 .on_input(Message::ProjectPathChanged)
-                .on_submit(move |_path| Message::ProjectOpenConfirm),
+                .on_submit(Message::ProjectOpenConfirm),
             row![
                 button("Open").on_press(Message::ProjectOpenConfirm),
                 button("Cancel").on_press(Message::Cancel),
