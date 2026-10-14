@@ -330,8 +330,22 @@ rejected by name, never accepted and ignored.
   `[workspace.dependencies]` (qgis-uic.1); parallel implementers therefore add
   deps to that one table and report them instead of hand-merging lock files.
 - Worktrees are Paseo-managed (`isolation=worktree`, `branch-off`). Archive
-  them after merge (`paseo archive workspace`, `git worktree prune`) per
-  `worktree-split-guidelines.md` §9.
+  them after merge per `worktree-split-guidelines.md` §9. The whole sequence —
+  fetch, rebase, `./verify test --crate <name>`, merge, push, `bd close`,
+  `paseo archive workspace`, `rm -rf` the worktree, confirm removal — is one
+  script:
+
+  ```bash
+  ./merge-and-cleanup --branch bd/<id> --worktree ~/.paseo/worktrees/<slug>/bd-<id> \
+      --crate <crate> --bead <id> --workspace <workspace-id>
+  ```
+
+  It stops at the first gate failure, rebase conflict, or merge conflict, and
+  leaves the worktree in place for the worker to resolve. `--dry-run` prints the
+  plan; `--keep-worktree` merges and closes without deleting; `--no-verify`
+  skips the gate when it already passed. This complements
+  `tools/bd-merge-bead.py` (which does not know about workspace ids or
+  worktree paths).
 - Each worktree sets `CARGO_TARGET_DIR=target/<bead-id>` (or its own
   `target/<bead-id>`) so caches never collide; workers must use it.
 - Quality gate wording: the fast gate is `./verify test --crate <name>`; the

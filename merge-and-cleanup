@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+# Coordinator merge-and-cleanup: run the fixed post-merge dance in one place.
+#
+# Doing this by hand is error-prone and skipped steps leave worktrees piling up
+# under ~/.paseo/worktrees/. This script performs the whole sequence and stops
+# at the first gate failure, rebase conflict, or merge conflict.
+#
+# Usage:
+#   ./merge-and-cleanup --branch <branch> --worktree <path> [options]
+#   ./merge-and-cleanup --help
+#
+# Required:
+#   --branch <branch>      Branch to merge into the integration branch.
+#   --worktree <path>      Path to the worker's worktree for that branch.
+#
+# Options:
+#   --crate <name>         Crate scope for the verification gate
+#                          (./verify test --crate <name>). Omit for the
+#                          whole workspace.
+#   --bead <id>            Bead to close after a successful push.
+#   --workspace <id>       Paseo workspace id to archive after bd close.
+#   --repo <path>          Main checkout to merge into. Defaults to the repo
+#                          that owns --worktree.
+#   --target <branch>      Integration branch (default: master).
+#   --remote <name>        Git remote (default: origin).
+#   --no-verify            Skip the verification gate (already passed).
+#   --keep-worktree        Merge and close, but leave the worktree in place.
+#   --dry-run              Print every command without executing it.
+#
+# Steps (in order):
+#   1. Resolve the owning repo and fetch.
+#   2. Rebase the worker branch onto <target>.
+#   3. Verification gate: ./verify test --crate <name>.
+#   4. Merge the branch into <target> in the main checkout.
+#   5. Push <target>.
+#   6. bd close <bead>.
+#   7. paseo archive workspace <id>.
+#   8. rm -rf the worktree and confirm it is gone.
+#
+# Exit codes: 0 = merged and cleaned up, 1 = a step failed, 2 = usage error.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+die() { echo "error: $*" >&2; exit 2; }
+
+usage() {
+    sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+}
+
+fail() { echo "--- merge-and-cleanup: FAILED: $* ---" >&2; exit 1; }
+
+step() { echo "--- merge-and-cleanup: $* ---"; }
+
+run() {
+    if [ "$dry_run" -eq 1 ]; then
+        echo "    [dry-run] $*"
+    else
+        "$@"
+    fi
+}
+
+branch="" worktree="" crate="" bead="" workspace="" repo=""
+target="master" remote="origin" no_verify=0 keep_worktree=0 dry_run=0
+
+usage_hint="usage: ./merge-and-cleanup --branch <branch> --worktree <path> [--crate <name>] [--bead <id>] [--workspace <id>] [--repo <path>] [--target <branch>] [--remote <name>] [--no-verify] [--keep-worktree] [--dry-run]"
+
+need_value() {
+    [ "$2" -ge 2 ] || die "$usage_hint"
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --help|-h|help) usage ;;
+        --branch)   need_value "$#" "$#"; branch="$2"; shift 2 ;;
+        --worktree) need_value "$#" "$#"; worktree="$2"; shift 2 ;;
+        --crate)    need_value "$#" "$#"; crate="$2"; shift 2 ;;
+        --bead)     need_value "$#" "$#"; bead="$2"; shift 2 ;;
+        --workspace) need_value "$#" "$#"; workspace="$2"; shift 2 ;;
+        --repo)     need_value "$#" "$#"; repo="$2"; shift 2 ;;
+        --target)   need_value "$#" "$#"; target="$2"; shift 2 ;;
+        --remote)   need_value "$#" "$#"; remote="$2"; shift 2 ;;
+        --no-verify) no_verify=1; shift ;;
+        --keep-worktree) keep_worktree=1; shift ;;
+        --dry-run)  dry_run=1; shift ;;
+        --*) die "unknown flag: $1
+$usage_hint" ;;
+        *) die "unexpected argument: $1
+$usage_hint" ;;
+    esac
+done
+
+[ -n "$branch" ] || die "--branch is required
+$usage_hint"
+[ -n "$worktree" ] || die "--worktree is required
+$usage_hint"
+
+[ -d "$worktree" ] || fail "worktree path does not exist: $worktree"
+worktree="$(cd "$worktree" && pwd)"
+
+# Resolve the main checkout: the repo that owns this worktree, unless overridden.
+if [ -z "$repo" ]; then
+    common_dir="$(git -C "$worktree" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    [ -n "$common_dir" ] || fail "not a git worktree: $worktree"
+    repo="$(dirname "$common_dir")"
+fi
+[ -d "$repo/.git" ] || fail "main checkout not found or not a git repo: $repo"
+repo="$(cd "$repo" && pwd)"
+
+[ "$repo" != "$worktree" ] || fail "refusing to merge and remove the main checkout (repo == worktree)"
+
+worktree_branch="$(git -C "$worktree" branch --show-current 2>/dev/null || true)"
+if [ -n "$worktree_branch" ] && [ "$worktree_branch" != "$branch" ]; then
+    fail "worktree is on branch '$worktree_branch', expected '$branch'"
+fi
+
+echo "    branch:   $branch"
+echo "    worktree: $worktree"
+echo "    repo:     $repo"
+echo "    target:   $target"
+echo "    remote:   $remote"
+
+# 1. Fetch, so the rebase and merge see the latest target.
+step "git fetch $remote"
+if [ "$dry_run" -eq 1 ]; then
+    echo "    [dry-run] git -C $repo fetch $remote"
+else
+    git -C "$repo" fetch "$remote" || fail "git fetch $remote failed"
+fi
+
+# 2. Rebase the worker branch onto the target. Any conflict aborts here and
+#    leaves the worktree intact for the worker to resolve.
+step "rebase $branch onto $target"
+rebase_base="$target"
+if git -C "$repo" rev-parse --verify --quiet "refs/remotes/$remote/$target" >/dev/null; then
+    rebase_base="$remote/$target"
+fi
+if [ "$dry_run" -eq 1 ]; then
+    echo "    [dry-run] git -C $worktree rebase $rebase_base"
+else
+    git -C "$worktree" rebase "$rebase_base" || fail "rebase onto $rebase_base conflicted — resolve in $worktree, then re-run"
+fi
+
+# 3. Verification gate. A gate failure aborts before anything is merged,
+#    pushed, closed, or deleted.
+if [ "$no_verify" -eq 1 ]; then
+    step "skipping verification gate (--no-verify)"
+else
+    if [ -n "$crate" ]; then
+        step "./verify test --crate $crate"
+        scope=(--crate "$crate")
+    else
+        step "./verify test"
+        scope=()
+    fi
+    if [ "$dry_run" -eq 1 ]; then
+        echo "    [dry-run] (cd $worktree && $SCRIPT_DIR/verify test ${scope[*]:-})"
+    else
+        (cd "$worktree" && "$SCRIPT_DIR/verify" test "${scope[@]+"${scope[@]}"}") \
+            || fail "verification gate failed for $crate — branch not merged, nothing cleaned up"
+    fi
+fi
+
+# 4. Merge into the target branch in the main checkout.
+step "merge $branch into $target"
+if [ "$dry_run" -eq 1 ]; then
+    echo "    [dry-run] git -C $repo checkout $target"
+    echo "    [dry-run] git -C $repo merge --ff-only $remote/$target"
+    echo "    [dry-run] git -C $repo merge --no-ff $branch -m \"Merge branch '$branch'\""
+else
+    git -C "$repo" checkout "$target" >/dev/null || fail "cannot check out $target"
+    if git -C "$repo" rev-parse --verify --quiet "refs/remotes/$remote/$target" >/dev/null; then
+        git -C "$repo" merge --ff-only "refs/remotes/$remote/$target" >/dev/null \
+            || fail "cannot fast-forward $target to $remote/$target"
+    fi
+    git -C "$repo" merge --no-ff "$branch" -m "Merge branch '$branch'" \
+        || fail "merge conflicted — resolve in $repo and re-run"
+fi
+
+# 5. Push before closing the bead: a bead must never be closed on an
+#    unpushed commit.
+step "push $target"
+run git -C "$repo" push "$remote" "$target" || fail "push of $target failed — bead left open for retry"
+
+# 6. Close the bead.
+if [ -n "$bead" ]; then
+    step "bd close $bead"
+    run bd close "$bead" || fail "bd close $bead failed"
+else
+    step "skipping bd close (no --bead)"
+fi
+
+# 7. Archive the workspace before deleting its worktree out from under it.
+if [ -n "$workspace" ]; then
+    step "paseo archive workspace $workspace"
+    run paseo archive workspace "$workspace" || fail "archiving workspace $workspace failed"
+else
+    step "skipping paseo archive (no --workspace)"
+fi
+
+# 8. Remove the worktree and confirm it is gone. The cwd may itself be inside
+#    the worktree, so move out of it first.
+if [ "$keep_worktree" -eq 1 ]; then
+    step "keeping worktree ($keep_worktree)"
+else
+    step "remove worktree $worktree"
+    if [ "$dry_run" -eq 1 ]; then
+        echo "    [dry-run] git -C $repo worktree remove --force $worktree || rm -rf $worktree"
+        echo "    [dry-run] test ! -d $worktree"
+    else
+        cd "$repo"
+        git worktree remove --force "$worktree" 2>/dev/null || rm -rf "$worktree"
+        git worktree prune || true
+        [ ! -d "$worktree" ] || fail "worktree still present after removal: $worktree"
+    fi
+fi
+
+if [ "$dry_run" -eq 1 ]; then
+    echo "--- merge-and-cleanup: dry run complete, nothing executed ---"
+else
+    echo "--- merge-and-cleanup: merged $branch into $target and cleaned up ---"
+fi
