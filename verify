@@ -326,6 +326,33 @@ cmd_all() {
     echo "============================================"
 }
 
+# ── agent-runnable acceptance gates (E16, bead qgis-gzq) ───────────────────────
+#
+# `./verify agent <suite>` runs a registered validation suite via the
+# qgis-validate harness and exits with the report's exit code. The hyphenated
+# form `./verify agent-<suite>` is accepted too, so the E16.x children
+# (agent-providers, agent-styles, agent-project, agent-oracle) can document a
+# single self-describing command. Suites are registered in
+# validate/src/suites/mod.rs; this script only routes to them.
+
+cmd_agent() {
+    need_cargo
+    local suite=""
+    if [ "$1" = "--list" ] || [ "$1" = "-l" ]; then
+        cargo run -p qgis-validate -- agent --list
+        return
+    fi
+    # Accept `./verify agent <suite>` and `./verify agent-<suite>`.
+    if [ "$1" = "agent" ] && [ $# -ge 2 ]; then
+        suite="$2"
+    elif [ -n "$1" ]; then
+        suite="${1#agent-}"
+    else
+        die "usage: ./verify agent <suite> | ./verify agent-<suite> | ./verify agent --list"
+    fi
+    cargo run -p qgis-validate -- agent "$suite"
+}
+
 # ── dispatch ──────────────────────────────────────────────────────────────────
 
 usage() {
@@ -341,6 +368,8 @@ case "${1:-}" in
     bench)  shift; cmd_bench "$@" ;;
     doctor) shift; cmd_doctor "$@" ;;
     all)    shift; cmd_all "$@" ;;
+    agent)  shift; cmd_agent "$@" ;;
+    agent-*) cmd_agent "$@" ;;
     --help|-h|help) usage ;;
     *)      usage ;;
 esac

@@ -1,0 +1,22 @@
+//! Suite registry for the `qgis-validate agent` CLI.
+//!
+//! Each suite is a named set of checks that validates one epic's acceptance
+//! criteria end-to-end. The parent epic (E16, bead qgis-gzq) ships
+//! [`selfcheck`]; the E16.x children add `providers`, `styles`, `project`, and
+//! `oracle` here as their own modules plus a match arm below.
+
+use crate::{CheckFn, Report, Runner};
+
+pub mod selfcheck;
+
+/// Names of every registered suite, for `--list`.
+pub const SUITES: &[&str] = &["selfcheck"];
+
+/// Run a named suite, or `None` if no such suite is registered.
+pub fn run(name: &str) -> Option<Report> {
+    let checks: Vec<(String, CheckFn)> = match name {
+        "selfcheck" => selfcheck::checks(),
+        _ => return None,
+    };
+    Some(Runner::run(name, checks))
+}
