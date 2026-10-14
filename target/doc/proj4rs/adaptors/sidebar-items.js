@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["transform_vertex_2d","transform_vertex_3d","transform_xy","transform_xyz"],"mod":["geo_types"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["add_grid","find_grids","set_builder"]};

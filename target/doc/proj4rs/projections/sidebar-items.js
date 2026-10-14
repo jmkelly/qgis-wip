@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"mod":["aea","estmerc","etmerc","geocent","laea","latlong","lcc","merc","moll","somerc","stere","sterea","tmerc"]};
