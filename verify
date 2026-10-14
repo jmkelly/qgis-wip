@@ -10,6 +10,9 @@
 #   ./verify bench [--crate <name>] [--run]
 #   ./verify doctor
 #   ./verify all [--crate <name>] [--geiger]
+#   ./verify agent <suite>            # run an E16 agent-runnable validation suite
+#   ./verify agent-<suite>            # alias, e.g. ./verify agent-providers
+#   ./verify agent --list             # list registered suites
 #
 # Exit codes: 0 = pass, 1 = fail, 2 = usage error.
 set -euo pipefail
@@ -356,7 +359,9 @@ cmd_agent() {
 # ── dispatch ──────────────────────────────────────────────────────────────────
 
 usage() {
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    # Print the comment header (every `#` line after the shebang), stopping at
+    # the first real command so `set -euo pipefail` never leaks into `--help`.
+    awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"
     exit 2
 }
 

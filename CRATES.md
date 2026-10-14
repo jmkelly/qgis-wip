@@ -28,6 +28,7 @@ crates have one — marked below). Generic gate for the rest:
 | `oracle/` | `qgis-oracle` | C++/Rust diff oracle + golden store | `backend`, `cpp_backend`, `rust_backend`, `diff`, `fixture`, `goldens`, `cli`, `output` | `./verify oracle` · [features/oracle.md](.opencode/skills/verify-qgis/features/oracle.md) |
 | `fixtures/` | `qgis-fixtures` | Fixture store catalog for the oracle | `parser`, `lib.rs` (catalog) | `./verify test --crate fixtures` |
 | `qgis-bench/` | `qgis-bench` | Criterion benches porting qgsbench | `expression`, `index`, `raster`, `render` | `./verify bench` · [features/bench.md](.opencode/skills/verify-qgis/features/bench.md) |
+| `validate/` | `qgis-validate` | Agent-runnable validation harness + report format (E16) | `lib.rs` (`Report`, `Runner`, `Outcome`, `Status`), `cli`, `suites/` | `./verify test --crate validate` · `./verify agent selfcheck` |
 
 ## Notes
 

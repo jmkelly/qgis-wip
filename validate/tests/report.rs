@@ -9,7 +9,7 @@
 //! compile until `qgis-validate` provides `Report`, `Runner`, and the
 //! pass/fail + exit-code + JSON contract.
 
-use qgis_validate::{Report, Runner, Status};
+use qgis_validate::{Outcome, Report, Runner, Status};
 
 #[test]
 fn report_classifies_pass_fail_skip() {
@@ -34,10 +34,13 @@ fn report_passes_when_no_failures() {
 #[test]
 fn runner_times_checks_and_builds_report() {
     let checks = vec![
-        ("passing".to_string(), Box::new(|| Ok(())) as qgis_validate::CheckFn),
+        (
+            "passing".to_string(),
+            Box::new(|| Outcome::Pass) as qgis_validate::CheckFn,
+        ),
         (
             "failing".to_string(),
-            Box::new(|| Err("boom".to_string())) as qgis_validate::CheckFn,
+            Box::new(|| Outcome::fail("boom")) as qgis_validate::CheckFn,
         ),
     ];
     let report = Runner::run("epic-e1-geometry", checks);
@@ -51,6 +54,39 @@ fn runner_times_checks_and_builds_report() {
         .expect("failing check present");
     assert_eq!(failed.detail, "boom");
     assert_eq!(failed.status, Status::Fail);
+}
+
+#[test]
+fn runner_marks_unavailable_check_as_skipped() {
+    // A dependency-gated check (e.g. PostGIS/SQL Server) that cannot run must
+    // be reported as Skip, not Fail. Otherwise `./verify agent-providers`
+    // would report a failure on a machine with no database, and the agent
+    // could not tell a real regression from an absent service.
+    let checks = vec![
+        (
+            "shapefile-load".to_string(),
+            Box::new(|| Outcome::Pass) as qgis_validate::CheckFn,
+        ),
+        (
+            "postgis-load".to_string(),
+            Box::new(|| Outcome::skip("PostGIS not reachable")) as qgis_validate::CheckFn,
+        ),
+    ];
+    let report = Runner::run("providers", checks);
+    assert_eq!(report.counts(), (1, 0, 1));
+    assert!(report.passed(), "a skipped check must not fail the run");
+    assert_eq!(report.exit_code(), 0);
+    let skipped = report
+        .checks
+        .iter()
+        .find(|c| c.name == "postgis-load")
+        .expect("skipped check present");
+    assert_eq!(skipped.status, Status::Skip);
+    assert_eq!(skipped.detail, "PostGIS not reachable");
+    assert!(
+        report.to_json().contains("\"status\": \"skip\""),
+        "skip must survive into the machine-readable report"
+    );
 }
 
 #[test]
