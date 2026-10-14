@@ -8,3 +8,4 @@ description = "Agent-runnable validation harness and report format for the QGIS 
 [dependencies]
 serde_json = { workspace = true }
 qgis-geometry = { path = "../geometry" }
+qgis-style = { path = "../style" }
