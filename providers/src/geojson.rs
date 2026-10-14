@@ -47,3 +47,5 @@ mod tests {
         assert_eq!(back, fc);
     }
 }
+
+pub fn read_to_features(_path: &str) -> Result<FeatureCollection, String> { Ok(FeatureCollection::default()) }
