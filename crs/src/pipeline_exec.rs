@@ -1224,6 +1224,45 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
+    // Deferred capability: GSB NADCON grids (bead qgis-qxu.3.3.1, ADR 0006)
+    // -----------------------------------------------------------------------
+    //
+    // ADR 0006 records GSB NADCON (.gsb) horizontal datum shifts as DEFERRED.
+    // The contract for a deferred capability is "rejected by name, never
+    // silently approximated": a request that needs a .gsb grid must fail with
+    // an explicit error, not return an unshifted coordinate. These tests pin
+    // that contract so the deferral cannot silently regress into an
+    // accepted-and-ignored parameter.
+
+    #[test]
+    fn deferred_gsb_nadcon_hgridshift_rejected_by_name() {
+        // A real QGIS-shaped NADCON pipeline: degrees → radians, an inverse
+        // horizontal grid shift against a .gsb grid, then back to degrees.
+        let p = parse(
+            "+proj=pipeline +step +proj=unitconvert +xy_in=deg +xy_out=rad \
+             +step +inv +proj=hgridshift +grids=nadcon5.gsb \
+             +step +proj=unitconvert +xy_in=rad +xy_out=deg",
+        )
+        .unwrap();
+        let result = execute_pipeline(&p, 45.0, 45.0, 0.0, 0.0);
+        assert!(
+            matches!(result, Err(PipelineError::UnsupportedMethod(ref m)) if m == "hgridshift"),
+            "expected hgridshift to be rejected by name, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn deferred_gsb_nadcon_top_level_hgridshift_rejected() {
+        // A bare +proj=hgridshift CRS must also be rejected rather than
+        // silently treated as an identity transform.
+        let result = crate::CrsTransform::from_proj_string("+proj=hgridshift +grids=nadcon5.gsb");
+        assert!(
+            result.is_err(),
+            "top-level hgridshift must be rejected, got {result:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
     // Empty pipeline
     // -----------------------------------------------------------------------
 
