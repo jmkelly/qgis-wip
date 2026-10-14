@@ -148,6 +148,8 @@ pub fn read_gpkg(path: impl AsRef<Path>) -> Result<Vec<Feature>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::FeatureProvider;
+
     #[test]
     fn parse_ok() {
         let mut b = vec![0u8;16];
@@ -161,15 +163,105 @@ mod tests {
     #[test]
     fn read_domains() {
         let f = read_gpkg("../provider-samples/domains.gpkg").unwrap();
-        // may be empty
-        let _ = f;
+        let fc = GpkgProvider.read_to_features("../provider-samples/domains.gpkg").unwrap();
+        assert_eq!(fc.features.len(), f.len());
+    }
+    #[test]
+    fn provider_reads_point_feature() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("test_gpkg_provider_{}.gpkg", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE gpkg_contents (table_name TEXT, data_type TEXT);
+                 INSERT INTO gpkg_contents VALUES ('places', 'features');
+                 CREATE TABLE gpkg_geometry_columns (table_name TEXT, column_name TEXT);
+                 INSERT INTO gpkg_geometry_columns VALUES ('places', 'geom');
+                 CREATE TABLE places (id INTEGER PRIMARY KEY, name TEXT, geom BLOB);"
+            ).unwrap();
+            let mut blob = Vec::new();
+            blob.extend_from_slice(b"GP");
+            blob.push(0); // version
+            blob.push(0); // flags: no envelope
+            blob.extend_from_slice(&4326i32.to_le_bytes());
+            // WKB point (1.5, 2.5) little-endian
+            blob.push(1);
+            blob.extend_from_slice(&1u32.to_le_bytes());
+            blob.extend_from_slice(&1.5f64.to_le_bytes());
+            blob.extend_from_slice(&2.5f64.to_le_bytes());
+            conn.execute(
+                "INSERT INTO places (id, name, geom) VALUES (1, 'hq', ?1)",
+                rusqlite::params![blob],
+            ).unwrap();
+        }
+        let fc = GpkgProvider.read_to_features(path.to_str().unwrap()).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(fc.features.len(), 1);
+        assert_eq!(fc.features[0].ty, "Feature");
+        assert_eq!(
+            fc.features[0].geometry,
+            Some(qgis_geometry::Geometry::Point(qgis_geometry::Point::new(1.5, 2.5)))
+        );
+        assert_eq!(
+            fc.features[0].properties.get("name"),
+            Some(&serde_json::json!("hq"))
+        );
     }
 }
 
-use crate::{FeatureCollection};
+use crate::Feature as CommonFeature;
+use crate::FeatureCollection;
+use qgis_geometry::Geometry as QGeom;
 
-pub fn read_to_features(_path: &str) -> Result<FeatureCollection, String> {
-    Ok(FeatureCollection::new())
+fn shape_to_geometry(s: &Shape) -> Option<QGeom> {
+    use qgis_geometry::{LineString, MultiLineString, Point, Polygon};
+    match s {
+        Shape::Null => None,
+        Shape::Point { x, y } => Some(QGeom::Point(Point::new(*x, *y))),
+        Shape::Polyline { parts } => {
+            if parts.is_empty() {
+                None
+            } else if parts.len() == 1 {
+                let pts: Vec<Point> = parts[0].iter().map(|(x, y)| Point::new(*x, *y)).collect();
+                Some(QGeom::LineString(LineString::new(pts)))
+            } else {
+                let lines: Vec<LineString> = parts
+                    .iter()
+                    .map(|part| LineString::new(part.iter().map(|(x, y)| Point::new(*x, *y)).collect()))
+                    .collect();
+                Some(QGeom::MultiLineString(MultiLineString::new(lines)))
+            }
+        }
+        Shape::Polygon { parts } => {
+            if parts.is_empty() {
+                Some(QGeom::Polygon(Polygon::new(vec![])))
+            } else if parts.len() == 1 {
+                let pts: Vec<Point> = parts[0].iter().map(|(x, y)| Point::new(*x, *y)).collect();
+                Some(QGeom::Polygon(Polygon::new(pts)))
+            } else {
+                let exterior: Vec<Point> = parts[0].iter().map(|(x, y)| Point::new(*x, *y)).collect();
+                let holes: Vec<Vec<Point>> = parts[1..]
+                    .iter()
+                    .map(|p| p.iter().map(|(x, y)| Point::new(*x, *y)).collect())
+                    .collect();
+                Some(QGeom::Polygon(Polygon::with_holes(exterior, holes)))
+            }
+        }
+    }
+}
+
+pub fn read_to_features(path: impl AsRef<Path>) -> Result<FeatureCollection, String> {
+    let feats = read_gpkg(path)?;
+    let mut out = FeatureCollection::new();
+    for f in feats {
+        out.features.push(CommonFeature {
+            ty: "Feature".into(),
+            geometry: shape_to_geometry(&f.geometry),
+            properties: f.attributes,
+        });
+    }
+    Ok(out)
 }
 
 pub struct GpkgProvider;
