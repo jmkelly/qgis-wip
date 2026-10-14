@@ -3179,9 +3179,12 @@ name = "qgis-gui"
 version = "0.1.0"
 dependencies = [
  "iced",
+ "qgis-core",
  "qgis-crs",
  "qgis-geometry",
+ "qgis-providers",
  "qgis-style",
+ "serde_json",
 ]
 
 [[package]]

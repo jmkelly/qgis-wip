@@ -8,6 +8,7 @@
 pub mod attribute_table;
 pub mod map_canvas;
 pub mod print_layout;
+pub mod style_apply;
 
 /// Application state for the main window.
 #[derive(Debug, Default)]
