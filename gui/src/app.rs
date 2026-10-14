@@ -13,6 +13,8 @@ use iced::{Element, Length, Task};
 use qgis_core::{Feature, Layer, LayerRegistry, Value};
 use qgis_crs::{Camera, SrsId};
 use qgis_providers::geojson;
+use qgis_providers::gpkg::GpkgProvider;
+use qgis_providers::FeatureProvider;
 use qgis_style::{parse_qml_file, StyleModel};
 
 use crate::dialogs;
@@ -410,15 +412,15 @@ fn status_bar(state: &AppState) -> Element<'_, Message> {
 /// Loads a layer from a file path, detecting format by extension.
 ///
 /// Supports `.shp` (shapefile), `.geojson`/`.json` (GeoJSON), and `.gpkg`
-/// (GeoPackage — not yet implemented). On success, adds the layer to the
-/// registry and fits the viewport to the layer extent.
+/// (GeoPackage). On success, adds the layer to the registry and fits the
+/// viewport to the layer extent.
 fn load_layer_from_path(state: &mut AppState, path: &str) {
     let result = if path.ends_with(".shp") {
         load_shapefile_as_layer(path)
     } else if path.ends_with(".geojson") || path.ends_with(".json") {
         load_geojson_as_layer(path)
     } else if path.ends_with(".gpkg") {
-        Err("GeoPackage loading not yet supported".into())
+        load_gpkg_as_layer(path)
     } else {
         Err(format!("Unsupported file format: {}", path))
     };
@@ -829,5 +831,151 @@ mod tests {
         );
         assert!(saved.contains("<view"));
         let _ = std::fs::remove_file(&qgs_path);
+    }
+
+    // -----------------------------------------------------------------------
+    // Bead qgis-0qz (E14.2): file open dialog — .shp / .geojson / .gpkg all
+    // load into the registry, fit the viewport, and render; invalid files
+    // produce an error dialog.
+    // -----------------------------------------------------------------------
+
+    /// Builds a GeoPackage geometry blob (header + WKB polygon, no envelope).
+    fn gpkg_polygon_blob(srs_id: i32, ring: &[(f64, f64)]) -> Vec<u8> {
+        let mut b = Vec::new();
+        b.extend_from_slice(b"GP");
+        b.push(0); // version
+        b.push(0); // flags: no envelope
+        b.extend_from_slice(&srs_id.to_le_bytes());
+        b.push(1); // WKB little-endian
+        b.extend_from_slice(&3u32.to_le_bytes()); // Polygon
+        b.extend_from_slice(&1u32.to_le_bytes()); // one ring
+        b.extend_from_slice(&(ring.len() as u32).to_le_bytes());
+        for (x, y) in ring {
+            b.extend_from_slice(&x.to_le_bytes());
+            b.extend_from_slice(&y.to_le_bytes());
+        }
+        b
+    }
+
+    /// Creates a real GeoPackage with two polygon features (EPSG:4326) in a
+    /// temp dir and returns its path.
+    fn make_test_gpkg(tag: &str) -> (std::path::PathBuf, String) {
+        use rusqlite::Connection;
+        let path = std::env::temp_dir().join(format!("{}-{}.gpkg", tag, std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE gpkg_contents (table_name TEXT, data_type TEXT, srs_id TEXT);
+                 INSERT INTO gpkg_contents VALUES ('parcels', 'features', '4326');
+                 CREATE TABLE gpkg_geometry_columns (table_name TEXT, column_name TEXT);
+                 INSERT INTO gpkg_geometry_columns VALUES ('parcels', 'geom');
+                 CREATE TABLE parcels (fid INTEGER PRIMARY KEY, name TEXT, geom BLOB);",
+            )
+            .unwrap();
+            let blob_a = gpkg_polygon_blob(
+                4326,
+                &[(2.0, 48.0), (3.0, 48.0), (3.0, 49.0), (2.0, 49.0), (2.0, 48.0)],
+            );
+            let blob_b = gpkg_polygon_blob(
+                4326,
+                &[(3.0, 49.0), (4.0, 49.0), (4.0, 50.0), (3.0, 50.0), (3.0, 49.0)],
+            );
+            conn.execute(
+                "INSERT INTO parcels (name, geom) VALUES ('a', ?1)",
+                rusqlite::params![blob_a],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO parcels (name, geom) VALUES ('b', ?1)",
+                rusqlite::params![blob_b],
+            )
+            .unwrap();
+        }
+        (path.clone(), path.to_str().unwrap().to_string())
+    }
+
+    /// Bead qgis-0qz acceptance: open a .gpkg through the file-open dialog
+    /// path and verify it loads into the registry, fits the viewport, and
+    /// produces canvas geometry — the same message pipeline and render check
+    /// as the qgis-3fz acceptance test.
+    #[test]
+    fn acceptance_file_open_gpkg_loads_and_renders() {
+        use qgis_style::symbols::CanvasGeometry;
+
+        use crate::layer_renderer::render_layer;
+        use crate::map_program::default_style_for_layer;
+
+        let (gpkg_path_buf, gpkg_path) = make_test_gpkg("qgis-0qz-acceptance");
+
+        let mut state = AppState::default();
+        update(&mut state, Message::OpenFileDialog);
+        update(&mut state, Message::FileDialogInputChanged(gpkg_path.clone()));
+        update(&mut state, Message::FileDialogConfirm);
+
+        assert!(
+            state.dialog.is_none(),
+            "valid .gpkg should not produce an error dialog, got {:?}",
+            state.dialog
+        );
+        assert_eq!(state.registry.len(), 1, "gpkg should load as one layer");
+        let layer = state.registry.layer_at(0).unwrap().clone();
+        assert_eq!(layer.name, "parcels");
+        assert_eq!(layer.features.len(), 2, "both gpkg features should load");
+        assert!(layer.extent().is_some(), "layer extent should be computed");
+        assert!(
+            (state.camera.zoom - 3.0).abs() > f64::EPSILON,
+            "camera should fit the loaded gpkg extent"
+        );
+        assert!(state.status.contains("Loaded"));
+
+        // Render the loaded layer through the E13 pipeline (same check as the
+        // qgis-3fz acceptance: geometry reaches the canvas).
+        let viewport = (1024.0, 768.0);
+        let camera = state.camera.with_viewport(viewport);
+        let style = default_style_for_layer(&layer);
+        let geoms = render_layer(&layer, &style, &camera, viewport);
+        assert!(
+            geoms
+                .iter()
+                .any(|g| matches!(g, CanvasGeometry::Fill { .. } | CanvasGeometry::Stroke { .. })),
+            "gpkg polygons should produce canvas geometry"
+        );
+
+        let _ = std::fs::remove_file(&gpkg_path_buf);
+    }
+
+    /// Invalid file (missing on disk) must surface the error dialog and not
+    /// touch the registry.
+    #[test]
+    fn file_open_missing_file_shows_error_dialog() {
+        let mut state = AppState::default();
+        update(&mut state, Message::OpenFileDialog);
+        update(
+            &mut state,
+            Message::FileDialogInputChanged("/nonexistent/dir/file.shp".into()),
+        );
+        update(&mut state, Message::FileDialogConfirm);
+        assert!(
+            matches!(state.dialog, Some(Dialog::Error { .. })),
+            "missing file should produce an error dialog, got {:?}",
+            state.dialog
+        );
+        assert!(state.registry.is_empty());
+    }
+
+    /// Unsupported extension must surface the error dialog.
+    #[test]
+    fn file_open_unsupported_extension_shows_error_dialog() {
+        let mut state = AppState::default();
+        update(&mut state, Message::OpenFileDialog);
+        update(&mut state, Message::FileDialogInputChanged("data.csv".into()));
+        update(&mut state, Message::FileDialogConfirm);
+        assert!(
+            matches!(state.dialog, Some(Dialog::Error { .. })),
+            "unsupported extension should produce an error dialog, got {:?}",
+            state.dialog
+        );
+        assert!(state.registry.is_empty());
     }
 }

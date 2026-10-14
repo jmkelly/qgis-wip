@@ -3185,6 +3185,7 @@ dependencies = [
  "qgis-providers",
  "qgis-spatial-index",
  "qgis-style",
+ "rusqlite",
  "serde_json",
 ]
 
