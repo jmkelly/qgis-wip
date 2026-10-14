@@ -28,7 +28,7 @@ pub fn view(state: &AppState) -> Element<Message> {
 }
 
 /// A single layer row in the panel.
-fn layer_row(state: &AppState, idx: usize, layer: &Layer) -> Element<Message> {
+fn layer_row<'a>(state: &'a AppState, idx: usize, layer: &'a Layer) -> Element<'a, Message> {
     let is_selected = state.selected_layer == Some(idx);
     let style_indicator = if state.styles.contains_key(&idx) {
         "\u{25cf}" // filled circle = styled
@@ -51,7 +51,7 @@ fn layer_row(state: &AppState, idx: usize, layer: &Layer) -> Element<Message> {
     }
     controls = controls.push(button(text("\u{00d7}")).on_press(Message::LayerDeleted(idx)));
 
-    container(controls.spacing(4).align_items(alignment::Alignment::Center))
+    container(controls.spacing(4).align_y(alignment::Vertical::Center))
         .style(move |_theme| {
             container::Style {
                 background: Some(if is_selected {

@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use iced::event::Status as EventStatus;
 use iced::mouse;
-use iced::widget::canvas::{self, Event, Frame, Geometry, Path};
+use iced::widget::canvas::{self, Event, Frame, Geometry as CanvasGeometry, Path};
 use iced::{Color, Point, Rectangle, Renderer, Theme};
 
 use qgis_core::{Layer, LayerRegistry};
@@ -104,7 +104,7 @@ impl canvas::Program<Message> for MapProgram {
                         if let Some(cam) = &mut state.camera {
                             let screen = (pos.x as f64, pos.y as f64);
                             let before = cam.screen_to_world(screen);
-                            cam.zoom = (cam.zoom + lines * 0.5).clamp(-2.0, 24.0);
+                            cam.zoom = (cam.zoom + lines as f64 * 0.5).clamp(-2.0, 24.0);
                             let after = cam.screen_to_world(screen);
                             cam.center.0 += before.0 - after.0;
                             cam.center.1 += before.1 - after.1;
@@ -125,7 +125,7 @@ impl canvas::Program<Message> for MapProgram {
         _theme: &Theme,
         bounds: Rectangle,
         _cursor: mouse::Cursor,
-    ) -> Vec<Geometry<Renderer>> {
+    ) -> Vec<CanvasGeometry<Renderer>> {
         let viewport = (bounds.width as f64, bounds.height as f64);
         let cam = state.camera.unwrap_or(self.initial_camera).with_viewport(viewport);
 
@@ -164,7 +164,7 @@ impl canvas::Program<Message> for MapProgram {
 }
 
 /// Creates a default style for a layer based on its first feature's geometry type.
-fn default_style_for_layer(layer: &Layer) -> StyleModel {
+pub(crate) fn default_style_for_layer(layer: &Layer) -> StyleModel {
     let symbol = match layer.features.first().and_then(|f| f.geometry.as_ref()) {
         Some(Geometry::Point(_)) | Some(Geometry::MultiPoint(_)) => Symbol::Point {
             shape: "circle".into(),
@@ -208,7 +208,6 @@ mod tests {
     use super::*;
     use qgis_core::Feature;
     use qgis_geometry::{LineString, Point as GeoPoint, Polygon};
-    use qgis_style::FillPattern;
 
     #[test]
     fn default_style_for_point_layer_uses_point_symbol() {
@@ -219,9 +218,9 @@ mod tests {
 
         let style = default_style_for_layer(&layer);
         match &style.renderer {
-            StyleRenderer::Single(Symbol::Point(ps)) => {
-                assert_eq!(ps.shape, "circle");
-                assert_eq!(ps.size, 6.0);
+            StyleRenderer::Single(Symbol::Point { shape, size, .. }) => {
+                assert_eq!(shape, "circle");
+                assert_eq!(*size, 6.0);
             }
             other => panic!("expected point symbol, got {:?}", other),
         }
@@ -240,8 +239,8 @@ mod tests {
 
         let style = default_style_for_layer(&layer);
         match &style.renderer {
-            StyleRenderer::Single(Symbol::Line(ls)) => {
-                assert_eq!(ls.width, 2.0);
+            StyleRenderer::Single(Symbol::Line { width, .. }) => {
+                assert_eq!(*width, 2.0);
             }
             other => panic!("expected line symbol, got {:?}", other),
         }
@@ -261,8 +260,8 @@ mod tests {
 
         let style = default_style_for_layer(&layer);
         match &style.renderer {
-            StyleRenderer::Single(Symbol::Polygon(ps)) => {
-                assert_eq!(ps.outline_width, 0.5);
+            StyleRenderer::Single(Symbol::Polygon { outline_width, .. }) => {
+                assert_eq!(*outline_width, 0.5);
             }
             other => panic!("expected polygon symbol, got {:?}", other),
         }
@@ -274,7 +273,7 @@ mod tests {
         let style = default_style_for_layer(&layer);
         assert!(matches!(
             &style.renderer,
-            StyleRenderer::Single(Symbol::Polygon(_))
+            StyleRenderer::Single(Symbol::Polygon { .. })
         ));
     }
 }
