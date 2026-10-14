@@ -3268,10 +3268,8 @@ dependencies = [
 name = "qgis-validate"
 version = "0.1.0"
 dependencies = [
- "qgis-crs",
  "qgis-geometry",
- "qgis-gui",
- "qgis-style",
+ "qgis-providers",
  "serde_json",
 ]
 
