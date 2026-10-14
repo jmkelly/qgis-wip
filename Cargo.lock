@@ -3181,6 +3181,7 @@ dependencies = [
  "iced",
  "qgis-crs",
  "qgis-geometry",
+ "qgis-style",
 ]
 
 [[package]]

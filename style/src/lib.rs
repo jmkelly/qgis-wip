@@ -4,6 +4,13 @@ use roxmltree::Document;
 use std::collections::BTreeMap;
 use std::path::Path;
 
+pub mod symbols;
+
+pub use symbols::{
+    CanvasGeometry, DashPattern, FillPattern, Geometry, Hatch, LineSymbol, MarkerShape,
+    PointSymbol, PolygonSymbol, Point2,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Color {
     pub r: u8,
