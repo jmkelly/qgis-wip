@@ -37,6 +37,8 @@ pub struct AppState {
     pub dialog: Option<Dialog>,
     /// Status bar message.
     pub status: String,
+    /// Whether the File menu dropdown is open.
+    pub file_menu_open: bool,
 }
 
 impl Default for AppState {
@@ -49,6 +51,7 @@ impl Default for AppState {
             selected_layer: None,
             dialog: None,
             status: "Ready — use Open File to load a spatial file".into(),
+            file_menu_open: false,
         }
     }
 }
@@ -69,7 +72,7 @@ pub enum Dialog {
 }
 
 /// Messages produced by UI interactions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Message {
     // Menu bar actions
     /// Open the file-open dialog.
@@ -118,6 +121,8 @@ pub enum Message {
     Cancel,
     /// Dismiss the error dialog.
     DismissError,
+    /// Toggle the File menu dropdown.
+    ToggleFileMenu,
 }
 
 /// Update function for the application.
@@ -125,10 +130,12 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
     match message {
         // ---- Menu bar ----
         Message::OpenFileDialog => {
+            state.file_menu_open = false;
             state.dialog = Some(Dialog::FileOpen { path: String::new() });
             Task::none()
         }
         Message::SaveProjectDialog => {
+            state.file_menu_open = false;
             let default_path = state
                 .registry
                 .iter()
@@ -139,6 +146,7 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::OpenProjectDialog => {
+            state.file_menu_open = false;
             state.dialog = Some(Dialog::ProjectOpen { path: String::new() });
             Task::none()
         }
@@ -307,6 +315,10 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
             state.dialog = None;
             Task::none()
         }
+        Message::ToggleFileMenu => {
+            state.file_menu_open = !state.file_menu_open;
+            Task::none()
+        }
     }
 }
 
@@ -335,17 +347,42 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     .into()
 }
 
-/// Menu bar widget.
-fn menu_bar(_state: &AppState) -> Element<'_, Message> {
+/// Menu bar widget: a "File" dropdown menu with the three required items.
+fn menu_bar(state: &AppState) -> Element<'_, Message> {
+    let file_menu_button = if state.file_menu_open {
+        button(text("File ▼")).on_press(Message::ToggleFileMenu)
+    } else {
+        button(text("File")).on_press(Message::ToggleFileMenu)
+    };
+
+    let mut menu_column = column![file_menu_button];
+
+    if state.file_menu_open {
+        for (label, message) in file_menu_items() {
+            menu_column = menu_column.push(
+                button(text(label).width(Length::Fill))
+                    .style(button::text)
+                    .on_press(message),
+            );
+        }
+    }
+
     row![
-        button(text("Open File")).on_press(Message::OpenFileDialog),
-        button(text("Save Project")).on_press(Message::SaveProjectDialog),
-        button(text("Open Project")).on_press(Message::OpenProjectDialog),
+        menu_column.spacing(4),
         button(text("Assign Style")).on_press(Message::AssignStyleDialog),
     ]
     .spacing(8)
     .padding(8)
     .into()
+}
+
+/// The items in the File menu: (label, message) pairs in display order.
+fn file_menu_items() -> Vec<(&'static str, Message)> {
+    vec![
+        ("Open Spatial File", Message::OpenFileDialog),
+        ("Save Project", Message::SaveProjectDialog),
+        ("Open Project", Message::OpenProjectDialog),
+    ]
 }
 
 /// Map canvas widget.
@@ -667,6 +704,47 @@ mod tests {
         update(&mut state, Message::AssignStyleDialog);
         assert!(state.dialog.is_none());
         assert!(state.status.contains("No layers"));
+    }
+
+    /// Bead qgis-cci acceptance: the menu bar must be a "File" menu containing
+    /// exactly "Open Spatial File", "Save Project", and "Open Project" items,
+    /// wired to the LayerRegistry through the file-open / project-save /
+    /// project-open dialog paths.
+    #[test]
+    fn menu_bar_has_file_menu_with_required_items() {
+        // The menu bar is built from a declarative list of (label, message)
+        // pairs. This test pins the exact structure the bead requires: a
+        // "File" menu with three items in the specified order.
+        let items = file_menu_items();
+        assert_eq!(
+            items,
+            vec![
+                ("Open Spatial File", Message::OpenFileDialog),
+                ("Save Project", Message::SaveProjectDialog),
+                ("Open Project", Message::OpenProjectDialog),
+            ]
+        );
+    }
+
+    /// The File menu dropdown toggles open and closed, and closes when a
+    /// menu item is selected.
+    #[test]
+    fn file_menu_toggles_and_closes_on_selection() {
+        let mut state = AppState::default();
+        assert!(!state.file_menu_open);
+
+        update(&mut state, Message::ToggleFileMenu);
+        assert!(state.file_menu_open);
+
+        update(&mut state, Message::ToggleFileMenu);
+        assert!(!state.file_menu_open);
+
+        // Selecting an item closes the menu.
+        update(&mut state, Message::ToggleFileMenu);
+        assert!(state.file_menu_open);
+        update(&mut state, Message::OpenFileDialog);
+        assert!(!state.file_menu_open);
+        assert!(matches!(state.dialog, Some(Dialog::FileOpen { .. })));
     }
 
     /// Acceptance pipeline (bead qgis-3fz): load a shapefile, display it on
