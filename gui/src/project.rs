@@ -303,7 +303,13 @@ pub fn read_qgs(xml: &str) -> Result<Project, String> {
                 visible,
                 opacity,
                 style_ref,
-                geometry_type: node.attribute("geometry").map(str::to_string),
+                // QGIS writes geometry="Unknown" for a layer with no features
+                // and geometry="NoGeometry" for an attribute-only layer; both
+                // mean "no geometry type" and must round-trip back to None.
+                geometry_type: node
+                    .attribute("geometry")
+                    .map(str::to_string)
+                    .filter(|g| g != "Unknown" && g != "NoGeometry"),
             },
         ));
     }
@@ -500,10 +506,14 @@ pub fn save_project(state: &AppState, path: &str) -> Result<(), String> {
 
 /// Opens a `.qgs` project file into `state`, reloading layers from their
 /// recorded data sources and re-parsing their style references.
+///
+/// Relative datasource paths are resolved against the project file's
+/// directory, as QGIS does; the layer keeps the source exactly as recorded.
 pub fn open_project(state: &mut AppState, path: &str) -> Result<(), String> {
     let xml =
         std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
     let project = read_qgs(&xml)?;
+    let project_dir = std::path::Path::new(path).parent();
 
     let mut registry = LayerRegistry::new();
     let mut styles = HashMap::new();
@@ -511,16 +521,28 @@ pub fn open_project(state: &mut AppState, path: &str) -> Result<(), String> {
 
     for (index, project_layer) in project.layers.iter().enumerate() {
         let mut layer = match project_layer.source.as_deref() {
-            Some(source) if !source.is_empty() => match load_source_layer(source) {
-                Ok(mut loaded) => {
-                    loaded.name = project_layer.name.clone();
-                    loaded
+            Some(source) if !source.is_empty() => {
+                let resolved = match project_dir {
+                    Some(dir) if !std::path::Path::new(source).is_absolute() => {
+                        dir.join(source)
+                    }
+                    _ => std::path::Path::new(source).to_path_buf(),
+                };
+                let resolved = resolved
+                    .to_str()
+                    .map(str::to_string)
+                    .unwrap_or_else(|| source.to_string());
+                match load_source_layer(&resolved) {
+                    Ok(mut loaded) => {
+                        loaded.name = project_layer.name.clone();
+                        loaded
+                    }
+                    Err(e) => {
+                        warnings.push(format!("{}: {e}", project_layer.name));
+                        Layer::new(project_layer.name.clone(), project_layer.crs)
+                    }
                 }
-                Err(e) => {
-                    warnings.push(format!("{}: {e}", project_layer.name));
-                    Layer::new(project_layer.name.clone(), project_layer.crs)
-                }
-            },
+            }
             _ => Layer::new(project_layer.name.clone(), project_layer.crs),
         };
         layer.crs = project_layer.crs;
@@ -638,6 +660,27 @@ mod tests {
     }
 
     #[test]
+    fn qgs_round_trips_empty_layer_geometry_type_none() {
+        // Bead qgis-o2l: a layer with no features (sourceless memory layer, or a
+        // source that failed to load) has geometry_type None. The writer emits
+        // geometry="Unknown" (QGIS-faithful); the reader must canonicalize it
+        // back to None so the layer round-trips.
+        let mut project = sample_project();
+        project.layers[0].geometry_type = None;
+        let xml = write_qgs(&project);
+        assert!(
+            xml.contains(r#"geometry="Unknown""#),
+            "writer should emit geometry=\"Unknown\" for an empty layer"
+        );
+        let parsed = read_qgs(&xml).expect("written XML should parse");
+        assert_eq!(
+            parsed.layers[0].geometry_type, None,
+            "reader must map geometry=\"Unknown\" back to None"
+        );
+        assert_eq!(parsed, project);
+    }
+
+    #[test]
     fn write_qgs_escapes_xml_metacharacters() {
         let mut project = sample_project();
         project.layers[0].name = "a<b>&\"c".into();
@@ -675,6 +718,45 @@ mod tests {
     fn read_qgs_rejects_non_qgis_xml() {
         assert!(read_qgs("<html><body/></html>").is_err());
         assert!(read_qgs("not xml").is_err());
+    }
+
+    #[test]
+    fn read_qgs_parses_all_bundled_qgis_sample_projects() {
+        // Every bundled QGIS sample must parse (E15.2: follow the QGIS .qgs
+        // format), regardless of provider (ogr, gdal, memory) or the extra
+        // elements real projects carry (renderer-v2, custom-order, layouts).
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let samples = [
+            "joins.qgs",
+            "layer_rendering_order_qgis3_project.qgs",
+            "layout_atlas_table.qgs",
+            "quickapp_project.qgs",
+            "relations.qgs",
+            "selective_masking.qgs",
+            "xyztiles.qgs",
+        ];
+        for file in samples {
+            let path = root.join("../qgs-projects").join(file);
+            let xml = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {file}: {e}"));
+            let project =
+                read_qgs(&xml).unwrap_or_else(|e| panic!("parse {file}: {e}"));
+            assert!(
+                !project.layers.is_empty(),
+                "{file}: should read at least one layer"
+            );
+            for layer in &project.layers {
+                assert!(
+                    !layer.name.is_empty(),
+                    "{file}: every layer should have a name"
+                );
+                assert!(
+                    layer.crs.epsg() > 0,
+                    "{file}: layer {:?} should carry a parsed CRS",
+                    layer.name
+                );
+            }
+        }
     }
 
     #[test]
@@ -749,6 +831,64 @@ mod tests {
         assert!((restored.camera.zoom - 5.0).abs() < 1e-12);
 
         let _ = std::fs::remove_file(path_str);
+    }
+
+    #[test]
+    fn open_project_resolves_relative_sources_against_project_dir() {
+        // QGIS stores datasource paths relative to the project file; opening a
+        // .qgs from any cwd must still load its layers (E15.2: "agent can
+        // run: cargo run, open project, verify layers appear").
+        let dir = std::env::temp_dir().join(format!("qgis-0a2-rel-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let geojson = dir.join("points.geojson");
+        std::fs::write(
+            &geojson,
+            r#"{"type":"FeatureCollection","features":[
+                {"type":"Feature","properties":{"n":"a"},"geometry":{"type":"Point","coordinates":[1.0,2.0]}},
+                {"type":"Feature","properties":{"n":"b"},"geometry":{"type":"Point","coordinates":[3.0,4.0]}}
+            ]}"#,
+        )
+        .unwrap();
+        let qgs_path = dir.join("proj.qgs");
+        std::fs::write(
+            &qgs_path,
+            r#"<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
+<qgis version="4.0.0" projectname="">
+  <projectCrs><spatialrefsys><authid>EPSG:4326</authid></spatialrefsys></projectCrs>
+  <layer-tree-group>
+    <layer-tree-layer name="pts" checked="Qt::Checked" source="points.geojson" providerKey="ogr" id="pts1"/>
+  </layer-tree-group>
+  <projectlayers>
+    <maplayer type="vector" geometry="Point">
+      <id>pts1</id>
+      <datasource>points.geojson</datasource>
+      <layername>pts</layername>
+      <srs><spatialrefsys><authid>EPSG:4326</authid></spatialrefsys></srs>
+      <provider>ogr</provider>
+    </maplayer>
+  </projectlayers>
+</qgis>"#,
+        )
+        .unwrap();
+
+        let mut state = AppState::default();
+        open_project(&mut state, qgs_path.to_str().unwrap()).unwrap();
+
+        let layer = state.registry.layer_at(0).unwrap();
+        assert_eq!(layer.name, "pts");
+        assert_eq!(
+            layer.feature_count(),
+            2,
+            "relative datasource should resolve against the project directory; status: {}",
+            state.status
+        );
+        assert!(
+            !state.status.contains("warning"),
+            "no warnings expected: {}",
+            state.status
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
