@@ -38,7 +38,15 @@ ad-hoc in a prompt.
 ./verify bench --run               # run benchmarks
 ./verify doctor                    # environment health check
 ./verify all                       # everything (like ci.sh)
+./verify agent --list              # list agent-runnable validation suites (E16)
+./verify agent <suite>             # run one suite; alias ./verify agent-<suite>
 ```
+
+`./verify agent <suite>` runs the `qgis-validate` harness and prints a
+human-readable report plus a machine-readable JSON block, exiting `0` iff no
+check failed. Suites are registered in `validate/src/suites/mod.rs`; a suite
+check reports `pass`, `fail`, or `skip` (a skipped check — e.g. a database that
+is not running — does not fail the run).
 
 ## Feature map
 

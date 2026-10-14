@@ -19,7 +19,7 @@ use std::time::Instant;
 pub mod cli;
 pub mod suites;
 
-/// Outcome of a single validation check.
+/// Stored status of a single validation check.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Status {
     Pass,
@@ -43,6 +43,49 @@ impl Status {
             Status::Pass => "PASS",
             Status::Fail => "FAIL",
             Status::Skip => "SKIP",
+        }
+    }
+}
+
+/// What a check reports when it runs.
+///
+/// A check can [`Pass`](Outcome::Pass), [`Fail`](Outcome::Fail) with a reason,
+/// or [`Skip`](Outcome::Skip) with a reason when a prerequisite (a database, a
+/// fixture, a platform) is unavailable. A skipped check is recorded in the
+/// [`Report`] but does not fail the run — see [`Report::passed`]. This is what
+/// lets `./verify agent-providers` distinguish "PostGIS is not running here"
+/// from "the PostGIS loader is broken".
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Outcome {
+    Pass,
+    Fail(String),
+    Skip(String),
+}
+
+impl Outcome {
+    /// The check ran and its assertion held.
+    pub fn pass() -> Self {
+        Outcome::Pass
+    }
+
+    /// The check ran and its assertion failed, with a human-readable reason.
+    pub fn fail(reason: impl Into<String>) -> Self {
+        Outcome::Fail(reason.into())
+    }
+
+    /// The check could not run because a prerequisite is unavailable. The
+    /// reason is recorded so an agent can tell "not applicable here" from
+    /// "broken".
+    pub fn skip(reason: impl Into<String>) -> Self {
+        Outcome::Skip(reason.into())
+    }
+}
+
+impl From<Result<(), String>> for Outcome {
+    fn from(result: Result<(), String>) -> Self {
+        match result {
+            Ok(()) => Outcome::Pass,
+            Err(reason) => Outcome::Fail(reason),
         }
     }
 }
@@ -72,9 +115,9 @@ impl Check {
     }
 }
 
-/// A validation check: run something, return `Ok(())` on pass or `Err(detail)`
-/// on fail. Boxed so a suite can mix heterogeneous checks in one vector.
-pub type CheckFn = Box<dyn Fn() -> Result<(), String>>;
+/// A validation check: run something and return an [`Outcome`]. Boxed so a
+/// suite can mix heterogeneous checks in one vector.
+pub type CheckFn = Box<dyn Fn() -> Outcome>;
 
 /// The validation report format (E16 deliverable). One report per suite run.
 #[derive(Clone, Debug)]
@@ -183,8 +226,9 @@ impl Runner {
         for (name, run) in checks {
             let start = Instant::now();
             let (status, detail) = match run() {
-                Ok(()) => (Status::Pass, "ok".to_string()),
-                Err(e) => (Status::Fail, e),
+                Outcome::Pass => (Status::Pass, "ok".to_string()),
+                Outcome::Fail(reason) => (Status::Fail, reason),
+                Outcome::Skip(reason) => (Status::Skip, reason),
             };
             let duration_ms = start.elapsed().as_millis();
             report.add(Check::new(name, status, duration_ms, detail));
@@ -202,5 +246,18 @@ mod tests {
         assert_eq!(Status::Pass.token(), "pass");
         assert_eq!(Status::Fail.token(), "fail");
         assert_eq!(Status::Skip.token(), "skip");
+    }
+
+    #[test]
+    fn outcome_constructors_and_result_bridge() {
+        assert_eq!(Outcome::pass(), Outcome::Pass);
+        assert_eq!(Outcome::fail("boom"), Outcome::Fail("boom".into()));
+        assert_eq!(Outcome::skip("no db"), Outcome::Skip("no db".into()));
+        // `?`-style checks that return `Result` bridge to Fail by default.
+        assert_eq!(Outcome::from(Ok(())), Outcome::Pass);
+        assert_eq!(
+            Outcome::from(Err("nope".to_string())),
+            Outcome::Fail("nope".to_string())
+        );
     }
 }

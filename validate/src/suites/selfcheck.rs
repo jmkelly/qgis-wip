@@ -17,10 +17,19 @@ const SQUARE_WKT: &str = "POLYGON((0 0,4 0,4 4,0 4,0 0))";
 
 pub fn checks() -> Vec<(String, CheckFn)> {
     vec![
-        ("wkt-parse-polygon".into(), Box::new(wkt_parse_polygon)),
-        ("polygon-area-positive".into(), Box::new(polygon_area_positive)),
-        ("wkt-roundtrip".into(), Box::new(wkt_roundtrip)),
-        ("predicate-contains".into(), Box::new(predicate_contains)),
+        (
+            "wkt-parse-polygon".into(),
+            Box::new(|| wkt_parse_polygon().into()),
+        ),
+        (
+            "polygon-area-positive".into(),
+            Box::new(|| polygon_area_positive().into()),
+        ),
+        ("wkt-roundtrip".into(), Box::new(|| wkt_roundtrip().into())),
+        (
+            "predicate-contains".into(),
+            Box::new(|| predicate_contains().into()),
+        ),
     ]
 }
 
