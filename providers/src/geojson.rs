@@ -40,7 +40,7 @@ impl crate::FeatureCollection {
 impl Default for FeatureCollection { fn default() -> Self { Self::new() } }
 
 fn parse_point_coords(c: &[serde_json::Value]) -> Result<qgis_geometry::Point, String> {
-    let x = c.get(0).and_then(|v| v.as_f64()).ok_or("invalid point x")?;
+    let x = c.first().and_then(|v| v.as_f64()).ok_or("invalid point x")?;
     let y = c.get(1).and_then(|v| v.as_f64()).ok_or("invalid point y")?;
     let mut p = qgis_geometry::Point::new(x, y);
     if let Some(z) = c.get(2).and_then(|v| v.as_f64()) {
@@ -133,11 +133,81 @@ fn parse_geometry(v: &serde_json::Value) -> Result<Option<QGeom>, String> {
     Ok(Some(geom))
 }
 
+fn point_coords(p: &qgis_geometry::Point) -> serde_json::Value {
+    let mut coords = vec![serde_json::json!(p.x), serde_json::json!(p.y)];
+    if let Some(z) = p.z {
+        coords.push(serde_json::json!(z));
+        if let Some(m) = p.m {
+            coords.push(serde_json::json!(m));
+        }
+    }
+    serde_json::Value::Array(coords)
+}
+
+fn polygon_rings_to_json(poly: &qgis_geometry::Polygon) -> serde_json::Value {
+    if poly.exterior.is_empty() && poly.interiors.is_empty() {
+        return serde_json::Value::Array(vec![]);
+    }
+    let mut rings = Vec::with_capacity(1 + poly.interiors.len());
+    rings.push(serde_json::Value::Array(
+        poly.exterior.iter().map(point_coords).collect(),
+    ));
+    for hole in &poly.interiors {
+        rings.push(serde_json::Value::Array(
+            hole.iter().map(point_coords).collect(),
+        ));
+    }
+    serde_json::Value::Array(rings)
+}
+
+fn geom_to_json_value(g: &QGeom) -> serde_json::Value {
+    let mut obj = serde_json::Map::new();
+    match g {
+        QGeom::Point(p) => {
+            obj.insert("type".into(), serde_json::Value::String("Point".into()));
+            obj.insert("coordinates".into(), point_coords(p));
+        }
+        QGeom::LineString(ls) => {
+            obj.insert("type".into(), serde_json::Value::String("LineString".into()));
+            let coords = ls.points().iter().map(point_coords).collect();
+            obj.insert("coordinates".into(), serde_json::Value::Array(coords));
+        }
+        QGeom::Polygon(poly) => {
+            obj.insert("type".into(), serde_json::Value::String("Polygon".into()));
+            obj.insert("coordinates".into(), polygon_rings_to_json(poly));
+        }
+        QGeom::MultiPoint(mp) => {
+            obj.insert("type".into(), serde_json::Value::String("MultiPoint".into()));
+            let coords = mp.points().iter().map(point_coords).collect();
+            obj.insert("coordinates".into(), serde_json::Value::Array(coords));
+        }
+        QGeom::MultiLineString(mls) => {
+            obj.insert("type".into(), serde_json::Value::String("MultiLineString".into()));
+            let lines = mls
+                .lines()
+                .iter()
+                .map(|ls| serde_json::Value::Array(ls.points().iter().map(point_coords).collect()))
+                .collect();
+            obj.insert("coordinates".into(), serde_json::Value::Array(lines));
+        }
+        QGeom::MultiPolygon(mp) => {
+            obj.insert("type".into(), serde_json::Value::String("MultiPolygon".into()));
+            let polys = mp.polygons().iter().map(polygon_rings_to_json).collect();
+            obj.insert("coordinates".into(), serde_json::Value::Array(polys));
+        }
+        QGeom::GeometryCollection(gc) => {
+            obj.insert("type".into(), serde_json::Value::String("GeometryCollection".into()));
+            let geoms = gc.geometries().iter().map(geom_to_json_value).collect();
+            obj.insert("geometries".into(), serde_json::Value::Array(geoms));
+        }
+    }
+    serde_json::Value::Object(obj)
+}
+
 fn geometry_to_json(g: &Option<QGeom>) -> serde_json::Value {
-    // Minimal serializer for FeatureCollection::to_json
     match g {
         None => serde_json::Value::Null,
-        Some(_) => serde_json::Value::Null,
+        Some(geom) => geom_to_json_value(geom),
     }
 }
 
@@ -150,5 +220,84 @@ pub struct GeoJsonProvider;
 impl crate::FeatureProvider for GeoJsonProvider {
     fn read_to_features(&self, path: &str) -> Result<crate::FeatureCollection, String> {
         read_to_features(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use qgis_geometry::{
+        GeometryCollection, LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon,
+    };
+
+    #[test]
+    fn round_trip() {
+        let mut fc = FeatureCollection::new();
+        let mut props = BTreeMap::new();
+        props.insert("name".into(), serde_json::json!("alpha"));
+
+        let ext = vec![
+            Point::new(0.0, 0.0),
+            Point::new(10.0, 0.0),
+            Point::new(10.0, 10.0),
+            Point::new(0.0, 10.0),
+            Point::new(0.0, 0.0),
+        ];
+        let hole = vec![
+            Point::new(2.0, 2.0),
+            Point::new(2.0, 8.0),
+            Point::new(8.0, 8.0),
+            Point::new(8.0, 2.0),
+            Point::new(2.0, 2.0),
+        ];
+        let poly_with_hole = Polygon::with_holes(ext.clone(), vec![hole]);
+        let simple_poly = Polygon::new(ext);
+
+        let geoms = vec![
+            Some(QGeom::Point(Point::new(1.0, 2.0))),
+            Some(QGeom::Point(Point::new_zm(1.0, 2.0, 3.0, 4.0))),
+            Some(QGeom::LineString(LineString::new(vec![
+                Point::new(0.0, 0.0),
+                Point::new(1.5, 2.5),
+            ]))),
+            Some(QGeom::Polygon(poly_with_hole.clone())),
+            Some(QGeom::MultiPoint(MultiPoint::new(vec![
+                Point::new(1.0, 2.0),
+                Point::new(3.0, 4.0),
+            ]))),
+            Some(QGeom::MultiLineString(MultiLineString::new(vec![
+                LineString::new(vec![Point::new(0.0, 0.0), Point::new(1.0, 1.0)]),
+                LineString::new(vec![Point::new(2.0, 2.0), Point::new(3.0, 3.0)]),
+            ]))),
+            Some(QGeom::MultiPolygon(MultiPolygon::new(vec![
+                simple_poly,
+                poly_with_hole,
+            ]))),
+            Some(QGeom::GeometryCollection(GeometryCollection::new(vec![
+                QGeom::Point(Point::new(5.0, 6.0)),
+                QGeom::LineString(LineString::new(vec![
+                    Point::new(0.0, 0.0),
+                    Point::new(1.0, 1.0),
+                ])),
+            ]))),
+            None,
+        ];
+
+        for g in geoms {
+            fc.features.push(Feature {
+                ty: "Feature".into(),
+                geometry: g,
+                properties: props.clone(),
+            });
+        }
+
+        let s = fc.to_json().unwrap();
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(
+            v["features"][0]["geometry"]["coordinates"],
+            serde_json::json!([1.0, 2.0])
+        );
+        let back = FeatureCollection::from_json(&s).unwrap();
+        assert_eq!(back, fc);
     }
 }
