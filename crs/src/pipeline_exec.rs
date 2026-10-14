@@ -481,6 +481,7 @@ fn execute_pop(v: &[f64], coord: Coord, stack: &mut ComponentStack) -> Result<Co
 /// Uses the small-angle approximation (matching PROJ's default). The `t`
 /// parameter (time reference epoch) is stored in the parsed step but does not
 /// affect the static 7-param math.
+#[allow(clippy::too_many_arguments)] // Helmert kernel: 7 transform parameters + convention + coord.
 fn execute_helmert(
     dx: f64,
     dy: f64,
@@ -531,7 +532,7 @@ fn execute_axisswap(order: &[i32], coord: Coord) -> Result<Coord, PipelineError>
     for i in 0..4 {
         if i < order.len() {
             let idx = order[i];
-            if idx < 1 || idx > 4 {
+            if !(1..=4).contains(&idx) {
                 return Err(PipelineError::InvalidAxis(idx));
             }
             out[i] = c[(idx - 1) as usize];
@@ -612,8 +613,6 @@ mod tests {
 
     #[test]
     fn unitconvert_invalid_input_unit() {
-        let p = parse("+proj=pipeline +step +proj=unitconvert +xy_in=deg +xy_out=rad").unwrap();
-        let result = execute_pipeline(&p, 0.0, 0.0, 0.0, 0.0);
         // Can't easily trigger invalid unit through the parser since it accepts
         // any string. Test the internal function directly.
         let err = unit_factor("furlong", "m").unwrap_err();
@@ -882,7 +881,7 @@ mod tests {
             "+proj=pipeline +step +proj=helmert +x=1 +y=2 +z=3",
         )
         .unwrap();
-        let (x, y, z, t) = execute_pipeline(&p, 100.0, 200.0, 300.0, 0.0).unwrap();
+        let (x, y, z, _t) = execute_pipeline(&p, 100.0, 200.0, 300.0, 0.0).unwrap();
         assert_eq!((x, y, z), (101.0, 202.0, 303.0));
     }
 

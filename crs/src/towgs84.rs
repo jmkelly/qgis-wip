@@ -122,6 +122,7 @@ impl Towgs84 {
     /// let t7 = Towgs84::from_str("1,2,3,0,0,0,0").unwrap();
     /// assert!(t7.is_7param());
     /// ```
+    #[allow(clippy::should_implement_trait)] // Deliberate inherent constructor; renaming would break the public API.
     pub fn from_str(s: &str) -> Result<Self, Towgs84Error> {
         let parts: Vec<&str> = s.split(',').collect();
         match parts.len() {

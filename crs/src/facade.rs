@@ -11,8 +11,6 @@
 
 #![forbid(unsafe_code)]
 
-use std::f64::consts::PI;
-
 use crate::projection::{Projection, ProjectionError};
 
 /// A coordinate reference system transform.
@@ -29,7 +27,10 @@ pub struct CrsTransform {
 #[derive(Debug, Clone)]
 enum InnerTransform {
     /// A proj4rs projection.
-    Proj4rs(proj4rs::Proj),
+    ///
+    /// Boxed: `proj4rs::Proj` is much larger than the native variant, and
+    /// boxing keeps the enum variant sizes balanced.
+    Proj4rs(Box<proj4rs::Proj>),
     /// A native gap-built projection (ortho, qsc).
     Native(Projection),
 }
@@ -105,7 +106,7 @@ impl CrsTransform {
         let inner = proj4rs::Proj::from_proj_string(proj_string)
             .map_err(|e| TransformError::InvalidProjString(e.to_string()))?;
         Ok(Self {
-            inner: InnerTransform::Proj4rs(inner),
+            inner: InnerTransform::Proj4rs(Box::new(inner)),
         })
     }
 
