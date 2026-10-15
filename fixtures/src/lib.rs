@@ -271,6 +271,7 @@ mod tests {
         assert_eq!(entry.source(), "tests/testdata/points.qml");
         assert_eq!(entry.path(), Path::new("styles/points.qml"));
         assert_eq!(entry.sidecars().len(), 0);
+        assert_eq!(entry.description(), "a point style");
         let _ = std::fs::remove_file(&path);
     }
 
@@ -340,5 +341,40 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("joins"), "message: {msg}");
         assert!(msg.contains("qgs-projects/joins.qgs"), "message: {msg}");
+    }
+
+    #[test]
+    fn validate_reports_every_missing_file() {
+        // Paths under a subdirectory that does not exist in the temp root.
+        let path = write_temp_manifest(
+            "[fixture.alpha]\ncategory = \"style\"\nsource = \"s\"\npath = \"mutants/missing-points.qml\"\ndescription = \"d\"\n\n[fixture.shp]\ncategory = \"provider-sample\"\nsource = \"s2\"\npath = \"mutants/missing.shp\"\nsidecars = [\"mutants/missing.shx\"]\ndescription = \"d\"\n",
+        );
+        let manifest = Manifest::load(&path).unwrap();
+        let mut errors = manifest.validate().unwrap_err();
+        errors.sort_by(|a, b| a.entry.cmp(&b.entry));
+        assert_eq!(errors.len(), 3, "errors: {errors:?}");
+        assert_eq!(errors[0].entry, "alpha");
+        assert_eq!(errors[0].path, Path::new("mutants/missing-points.qml"));
+        assert_eq!(errors[1].entry, "shp");
+        assert_eq!(errors[1].path, Path::new("mutants/missing.shp"));
+        assert_eq!(errors[2].path, Path::new("mutants/missing.shx"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn validate_ok_when_all_files_exist() {
+        let dir = std::env::temp_dir().join(format!("qgis-fixtures-validate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("styles")).unwrap();
+        std::fs::write(dir.join("styles/points.qml"), "").unwrap();
+        let manifest_path = dir.join("manifest.toml");
+        std::fs::write(
+            &manifest_path,
+            "[fixture.alpha]\ncategory = \"style\"\nsource = \"s\"\npath = \"styles/points.qml\"\ndescription = \"d\"\n",
+        )
+        .unwrap();
+        let manifest = Manifest::load(&manifest_path).unwrap();
+        assert!(manifest.validate().is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

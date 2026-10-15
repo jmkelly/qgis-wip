@@ -354,6 +354,15 @@ mod tests {
     }
 
     #[test]
+    fn hash_inside_quoted_string_is_not_a_comment() {
+        // A '#' inside a quoted value (with escaped quotes) must be kept;
+        // only the trailing inline comment is stripped.
+        let text = "[fixture.a]\ncategory = \"style\"\nsource = \"s\"\npath = \"p\"\ndescription = \"color #ff0000 in \\\"theme\\\"\" # trailing comment\n";
+        let (_, entries) = parse_manifest(text).unwrap();
+        assert_eq!(entries[0].description(), "color #ff0000 in \"theme\"");
+    }
+
+    #[test]
     fn rejects_unknown_section() {
         let err = parse_manifest("[bogus]\n").unwrap_err();
         assert_eq!(err.line, 1);
