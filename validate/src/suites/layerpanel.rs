@@ -24,7 +24,7 @@ const GEOJSON: &str = "points.geojson";
 
 /// The panel row names the two fixtures produce.
 const SHAPEFILE_LAYER: &str = "france_parts";
-const GEOJSON_LAYER: &str = "points.geojson";
+const GEOJSON_LAYER: &str = "points";
 
 fn sample(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

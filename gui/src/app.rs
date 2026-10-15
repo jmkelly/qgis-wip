@@ -473,7 +473,7 @@ fn load_layer_from_path(state: &mut AppState, path: &str) {
 /// The layer takes the file's base name without extension (matching QGIS and
 /// the shapefile loader), falling back to the full file name when no stem
 /// can be derived.
-fn load_geojson_as_layer(path: &str) -> Result<Layer, String> {
+pub(crate) fn load_geojson_as_layer(path: &str) -> Result<Layer, String> {
     let fc = GeoJsonProvider.read_to_features(path)?;
     let name = std::path::Path::new(path)
         .file_stem()

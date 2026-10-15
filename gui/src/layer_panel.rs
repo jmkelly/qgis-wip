@@ -147,7 +147,7 @@ mod tests {
         let panel = rows(&state);
         assert_eq!(panel.len(), 2, "both loaded files must appear in the panel");
         assert_eq!(panel[0].name, "france_parts");
-        assert_eq!(panel[1].name, "points.geojson");
+        assert_eq!(panel[1].name, "points");
         assert_eq!(panel[0].index, 0);
         assert_eq!(panel[1].index, 1);
         assert!(
