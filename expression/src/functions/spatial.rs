@@ -168,7 +168,7 @@ fn distance(args: &[Literal]) -> Result<Literal, EvalError> {
 }
 fn collect_points(g: &Geometry) -> Vec<Point> {
     match g {
-        Geometry::Point(p)=>vec![p.clone()],
+        Geometry::Point(p)=>vec![*p],
         Geometry::LineString(ls)=>ls.points().to_vec(),
         Geometry::Polygon(pg)=>{ let mut v=pg.exterior().to_vec(); for h in pg.interiors() { v.extend(h.clone()); } v }
         Geometry::MultiPoint(mp)=>mp.points().to_vec(),
@@ -307,7 +307,6 @@ pub fn lookup(name: &str) -> Option<super::FunctionFn> {
         "num_rings" => num_rings as super::FunctionFn,
         "geometry_n" => geometry_n as super::FunctionFn,
         "distance" => distance as super::FunctionFn,
-        "y" => y_coord as super::FunctionFn,
         "area" => area as super::FunctionFn,
         "perimeter" => perimeter as super::FunctionFn,
         "length" => length as super::FunctionFn,

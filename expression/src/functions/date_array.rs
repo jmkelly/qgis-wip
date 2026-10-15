@@ -726,7 +726,7 @@ mod tests {
         )
         .unwrap();
         // Approximately 6 years = ~2192 days
-        assert!(matches!(result, Literal::Integer(n) if n >= 2190 && n <= 2195));
+        assert!(matches!(result, Literal::Integer(n) if (2190..=2195).contains(&n)));
     }
 
     #[test]
@@ -1041,7 +1041,7 @@ mod tests {
         // Verify the algorithm returns a consistent ISO day of week
         // 1970-01-01 was a Thursday (ISO day 4)
         let dow = call("day_of_week", vec![Literal::Date("1970-01-01".to_string())]).unwrap();
-        assert!(matches!(dow, Literal::Integer(n) if n >= 1 && n <= 7));
+        assert!(matches!(dow, Literal::Integer(n) if (1..=7).contains(&n)));
     }
 
     #[test]

@@ -462,8 +462,8 @@ mod tests {
 
     #[test]
     fn lex_float() {
-        let toks = lex("3.14").unwrap();
-        assert_eq!(toks, vec![Token::Float(3.14)]);
+        let toks = lex("2.5").unwrap();
+        assert_eq!(toks, vec![Token::Float(2.5)]);
     }
 
     #[test]

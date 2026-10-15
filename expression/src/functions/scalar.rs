@@ -452,7 +452,7 @@ mod tests {
     #[test]
     fn test_abs() {
         assert_eq!(call("abs", vec![Literal::Integer(-5)]).unwrap(), Literal::Integer(5));
-        assert_eq!(call("abs", vec![Literal::Float(-3.14)]).unwrap(), Literal::Float(3.14));
+        assert_eq!(call("abs", vec![Literal::Float(-std::f64::consts::PI)]).unwrap(), Literal::Float(std::f64::consts::PI));
     }
 
     #[test]
@@ -472,8 +472,8 @@ mod tests {
         assert_eq!(call("round", vec![Literal::Float(3.5)]).unwrap(), Literal::Integer(4));
         assert_eq!(call("round", vec![Literal::Float(3.4)]).unwrap(), Literal::Integer(3));
         assert_eq!(
-            call("round", vec![Literal::Float(3.14159), Literal::Integer(2)]).unwrap(),
-            Literal::Float(3.14)
+            call("round", vec![Literal::Float(1.23456), Literal::Integer(2)]).unwrap(),
+            Literal::Float(1.23)
         );
     }
 
@@ -600,13 +600,13 @@ mod tests {
     #[test]
     fn test_to_real() {
         assert_eq!(call("to_real", vec![Literal::Integer(5)]).unwrap(), Literal::Float(5.0));
-        assert_eq!(call("to_real", vec![Literal::Str("3.14".to_string())]).unwrap(), Literal::Float(3.14));
+        assert_eq!(call("to_real", vec![Literal::Str("2.5".to_string())]).unwrap(), Literal::Float(2.5));
     }
 
     #[test]
     fn test_to_string() {
         assert_eq!(call("to_string", vec![Literal::Integer(42)]).unwrap(), Literal::Str("42".to_string()));
-        assert_eq!(call("to_string", vec![Literal::Float(3.14)]).unwrap(), Literal::Str("3.14".to_string()));
+        assert_eq!(call("to_string", vec![Literal::Float(2.5)]).unwrap(), Literal::Str("2.5".to_string()));
     }
 
     #[test]

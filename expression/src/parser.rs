@@ -537,8 +537,8 @@ mod tests {
 
     #[test]
     fn parse_float() {
-        let expr = parse_str("3.14");
-        assert_eq!(expr, Expr::Literal(Literal::Float(3.14)));
+        let expr = parse_str("2.5");
+        assert_eq!(expr, Expr::Literal(Literal::Float(2.5)));
     }
 
     #[test]
@@ -988,12 +988,12 @@ mod tests {
 
     #[test]
     fn parse_negative_float() {
-        let expr = parse_str("-3.14");
+        let expr = parse_str("-2.5");
         assert_eq!(
             expr,
             Expr::Unary(
                 UnaryOp::Neg,
-                Box::new(Expr::Literal(Literal::Float(3.14))),
+                Box::new(Expr::Literal(Literal::Float(2.5))),
             )
         );
     }
