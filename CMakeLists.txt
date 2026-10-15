@@ -9,10 +9,10 @@ project(qgis_oracle_harness LANGUAGES CXX)
 # (oracle/src/rust_backend.rs) with the backend
 # self-identification line set to "cpp".
 #
-# Build (out of tree):
-#   cmake -S rust/cpp_harness -B rust/cpp_harness/build
-#   cmake --build rust/cpp_harness/build
-# Binary: rust/cpp_harness/build/qgis_oracle_harness
+# Build (out of tree, from the repo root):
+#   cmake -S . -B build
+#   cmake --build build
+# Binary: build/qgis_oracle_harness
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

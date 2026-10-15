@@ -24,7 +24,7 @@ polygons, no external data — on an iced `Canvas` widget, with:
 
 The viewport transform is managed by `qgis_crs::Camera`: longitude/latitude
 (degrees) is projected to world radians with `equirectangular_project`, then
-mapped to screen pixels by the camera (see `rust/crates/crs`).
+mapped to screen pixels by the camera (see `crs`).
 
 ### Running
 

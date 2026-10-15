@@ -20,7 +20,6 @@ jobs:
           toolchain: "1.99.0"
       - uses: Swatinem/rust-cache@v2
       - name: Run workspace tests
-        working-directory: rust
         run: cargo test --workspace
 
   clippy:
@@ -34,7 +33,6 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Run clippy with -D warnings
-        working-directory: rust
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   bench-compile:
@@ -47,7 +45,6 @@ jobs:
           toolchain: "1.99.0"
       - uses: Swatinem/rust-cache@v2
       - name: Verify benches compile
-        working-directory: rust
         run: cargo bench -p qgis-bench --no-run
 
   oracle:
@@ -60,7 +57,6 @@ jobs:
           toolchain: "1.99.0"
       - uses: Swatinem/rust-cache@v2
       - name: Run oracle on trivial fixture
-        working-directory: rust
         run: cargo run -p qgis-oracle -- oracle/fixtures/trivial.txt
 
   geiger:
@@ -76,5 +72,4 @@ jobs:
       - name: Install cargo-geiger
         run: cargo install cargo-geiger --locked
       - name: Run cargo-geiger
-        working-directory: rust
         run: cargo geiger --workspace

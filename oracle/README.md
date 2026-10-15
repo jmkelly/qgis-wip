@@ -80,16 +80,16 @@ Build it (out of tree; requires `cmake` >= 3.16 and a C++17 compiler on
 `PATH`):
 
 ```sh
-cmake -S rust/cpp_harness -B rust/cpp_harness/build
-cmake --build rust/cpp_harness/build
+cmake -S . -B build
+cmake --build build
 ```
 
-The binary lands at `rust/cpp_harness/build/qgis_oracle_harness` (build
+The binary lands at `build/qgis_oracle_harness` (build
 output is gitignored). Then point the oracle at it and run a live
 C++ diff:
 
 ```sh
-export QGIS_CPP_BINARY=rust/cpp_harness/build/qgis_oracle_harness
+export QGIS_CPP_BINARY=build/qgis_oracle_harness
 cargo run -p qgis-oracle -- diff oracle/fixtures/trivial.txt --backend-a rust --backend-b cpp
 ```
 
@@ -120,8 +120,8 @@ version changes never show up as drift; `fixture:`, `bytes:`,
 
 E0: harness mechanics are code-complete, and the C++ oracle pipeline
 is live. The Rust backend is a deterministic placeholder (canonical
-echo of the fixture); the C++ side is the minimal harness at
-`rust/cpp_harness/` (see above), selected via `QGIS_CPP_BINARY` and
+echo of the fixture); the C++ side is the minimal harness at the repo
+root (`CMakeLists.txt` + `main.cpp`, see above), selected via `QGIS_CPP_BINARY` and
 diffed against Rust by `./ci.sh` over the E0 fixture set. Goldens
 capture the C++ harness reference output. Parity hardening (C++ vs
 Rust on real algorithms) comes in E1+, when `QGIS_CPP_BINARY` moves

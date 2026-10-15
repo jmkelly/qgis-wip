@@ -170,7 +170,7 @@ else
         done
     else
         echo "warning: QGIS_CPP_BINARY not set; skipping live C++ oracle diff."
-        echo "         Build rust/cpp_harness and set QGIS_CPP_BINARY to enable it (see oracle/README.md)."
+        echo "         Build the C++ oracle harness and set QGIS_CPP_BINARY to enable it (see oracle/README.md)."
     fi
 fi
 echo ""

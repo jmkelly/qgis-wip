@@ -33,14 +33,13 @@ see ADR-0006.
   [`crs-definitions`](https://crates.io/crates/crs-definitions) for the embedded EPSG dataset, per
   [ADR 0006](../docs/adr/0006-proj4rs-projections.md). The gaps around them — WKT2:2019 parse/emit,
   datum ensembles, GSB/GTX grids, `projinfo`/cct parity — are ours to build. New third-party crate
-  dependencies must be pure Rust, GPL-compatible, and pinned exact in `rust/Cargo.toml`.
+  dependencies must be pure Rust, GPL-compatible, and pinned exact in `Cargo.toml`.
 - Each crate must run `cargo test` in under 5 minutes.
 - Crates are small and focused, mapping one-to-one with QGIS modules.
 
 ## Quick start
 
 ```bash
-cd rust
 cargo test --workspace
 cargo clippy --workspace -- -D warnings
 cargo geiger --workspace  # verify no FFI
@@ -48,7 +47,7 @@ cargo geiger --workspace  # verify no FFI
 
 ## CI
 
-All quality gates are automated in CI (`.github/workflows/rust-port.yml`) and
+All quality gates are automated in CI (`rust-port.yml`) and
 can be run locally with a single script:
 
 ```bash

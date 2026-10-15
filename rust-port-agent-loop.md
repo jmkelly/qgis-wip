@@ -119,7 +119,7 @@ You are the implementer for QGIS Rust port bead <id>.
    (verify with cargo-geiger if Rust code exists yet).
    Projection math comes from the `proj4rs` crate (ADR 0006) — never hand-written.
    No new third-party crate without an ADR; approved crates must be pure Rust
-   (cargo geiger), GPL-3.0-compatible, and pinned exact in rust/Cargo.toml.
+   (cargo geiger), GPL-3.0-compatible, and pinned exact in Cargo.toml.
    Keep crates small; each must hold <5 min `cargo test`.
    Log gaps/decisions with: bd remember "bead <id>: <insight>"
 5. Quality gates before reporting done:
@@ -164,7 +164,7 @@ You are the reviewer for epic <epic-id>. Do NOT implement.
 
 ## 7. CI gates and the bead workflow
 
-The CI pipeline (`.github/workflows/rust-port.yml`) runs the same gates the
+The CI pipeline (`rust-port.yml`) runs the same gates the
 implementer runs before reporting done. This ensures that code merged to
 `main`/`master` is always in a known-good state.
 
@@ -183,7 +183,6 @@ implementer runs before reporting done. This ensures that code merged to
 All gates can be run locally with a single command:
 
 ```bash
-cd rust
 ./ci.sh           # run all gates
 ./ci.sh --geiger  # also run cargo-geiger
 ```
@@ -212,9 +211,9 @@ The E0 scaffold epic is complete:
   workspace crates.
 - **Criterion benches** (`qgis-bench/`): Benchmarks for hot
   paths (render, index, expression, raster) using the `criterion` crate.
-- **CI pipeline** (`.github/workflows/rust-port.yml`): Runs test, clippy,
+- **CI pipeline** (`rust-port.yml`): Runs test, clippy,
   bench compile, oracle smoke, and geiger on every push/PR.
-- **CI script** (`rust/ci.sh`): Local gate runner for developers.
+- **CI script** (`ci.sh`): Local gate runner for developers.
 
 The workspace has 11 crates: geometry, crs, expression, fixtures, oracle,
 providers, analysis, server, pyo3, gui, and qgis-bench.

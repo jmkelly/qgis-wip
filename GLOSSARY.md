@@ -20,7 +20,7 @@ _Avoid_: pragmatic FFI, shim, wrapper
 A memory-safe pure-Rust third-party crate is not FFI and is permitted where it removes a large rebuild
 risk — currently `proj4rs` for cartographic projection math and `crs-definitions` for the EPSG dataset
 (ADR 0006). Must stay pure Rust (`cargo geiger`), GPL-3.0-compatible, and pinned exact in
-`rust/Cargo.toml`.
+`Cargo.toml`.
 _Avoid_: vendoring C, silent dependency, unpinned crate
 
 **Oracle**:

@@ -28,7 +28,7 @@ boundary is explicit rather than discovered later.
 ## Measured gap table (bead qgis-uic.6, 2026-10-11)
 
 This table replaces the assumed gaps with measured data from the QGIS source tree
-(`src/`, `python/`, `tests/`) and the fixture store (`rust/fixtures/`).
+(`src/`, `python/`, `tests/`) and the fixture store (`fixtures/`).
 
 ### +proj method coverage
 
@@ -68,7 +68,7 @@ The open methods fall into three categories:
 
 ### crs-definitions coverage
 
-Fixture store EPSG codes (from `rust/fixtures/`):
+Fixture store EPSG codes (from `fixtures/`):
 
 | EPSG code | Fixture occurrences | crs-definitions 0.6.0 | Status |
 | --- | --- | --- | --- |
@@ -197,7 +197,7 @@ than a silently wrong result. This caps E9 parity at proj4rs's coverage boundary
 E2 (`qgis-qxu`) shrinks from "rebuild PROJ" to "integrate proj4rs, then gap-build the table above".
 `qgis-crs` becomes a thin, honest facade: proj strings and EPSG codes in, `geo_types` out, degrees at
 the boundary. Licences are compatible with our GPL-3.0-or-later: MIT/Apache-2.0 for proj4rs, CC0 for
-crs-definitions. Both are pinned exact in `rust/Cargo.toml` `[workspace.dependencies]` so parallel
+crs-definitions. Both are pinned exact in `Cargo.toml` `[workspace.dependencies]` so parallel
 implementers do not churn `Cargo.lock`.
 
 The E0.5 GUI POC's `Equirectangular` is unrelated to this: it maps degrees straight onto the render

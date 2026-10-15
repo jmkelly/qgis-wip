@@ -17,7 +17,7 @@ impl CppBackend {
     pub const NAME: &'static str = "cpp";
 
     /// Error message used when no C++ binary is configured.
-    pub const NOT_BUILT: &str = "C++ backend not built yet; build rust/cpp_harness and set \
+    pub const NOT_BUILT: &str = "C++ backend not built yet; build the C++ oracle harness and set \
                                 QGIS_CPP_BINARY to enable it (see oracle/README.md)";
 
     /// Runs the fixture through the configured C++ binary.
@@ -93,6 +93,11 @@ mod tests {
         assert!(
             !CppBackend::NOT_BUILT.contains("crates/"),
             "message should not use the pre-move crates/ prefix: {}",
+            CppBackend::NOT_BUILT
+        );
+        assert!(
+            !CppBackend::NOT_BUILT.contains("rust/"),
+            "message should not use the pre-move rust/ prefix: {}",
             CppBackend::NOT_BUILT
         );
     }
