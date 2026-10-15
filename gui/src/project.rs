@@ -681,6 +681,34 @@ mod tests {
     }
 
     #[test]
+    fn read_qgs_maps_no_geometry_attribute_to_none() {
+        // Attribute-only layers carry geometry="NoGeometry" in QGIS .qgs
+        // files; like "Unknown" it means "no geometry type" and must not
+        // become Some("NoGeometry") on read.
+        let xml = r#"<!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
+<qgis version="4.0.0" projectname="">
+  <projectCrs><spatialrefsys><authid>EPSG:4326</authid></spatialrefsys></projectCrs>
+  <layer-tree-group>
+    <layer-tree-layer name="attrs" checked="Qt::Checked" source="" providerKey="ogr" id="attrs1"/>
+  </layer-tree-group>
+  <projectlayers>
+    <maplayer type="vector" geometry="NoGeometry">
+      <id>attrs1</id>
+      <datasource>./attrs.csv</datasource>
+      <layername>attrs</layername>
+      <srs><spatialrefsys><authid>EPSG:4326</authid></spatialrefsys></srs>
+      <provider>ogr</provider>
+    </maplayer>
+  </projectlayers>
+</qgis>"#;
+        let parsed = read_qgs(xml).expect("written XML should parse");
+        assert_eq!(
+            parsed.layers[0].geometry_type, None,
+            "reader must map geometry=\"NoGeometry\" back to None"
+        );
+    }
+
+    #[test]
     fn write_qgs_escapes_xml_metacharacters() {
         let mut project = sample_project();
         project.layers[0].name = "a<b>&\"c".into();
