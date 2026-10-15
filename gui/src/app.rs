@@ -1239,6 +1239,7 @@ mod tests {
             Some(Dialog::Error { message }) => assert!(message.contains("qml"), "{message}"),
             other => panic!("expected an error dialog, got {:?}", other),
         }
+    }
 
     // -----------------------------------------------------------------------
     // Bead qgis-0qz (E14.2): file open dialog — .shp / .geojson / .gpkg all
