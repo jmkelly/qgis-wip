@@ -36,6 +36,10 @@ ad-hoc in a prompt.
 ./verify diff <fixture> --cpp      # rust vs C++ (needs QGIS_CPP_BINARY)
 ./verify bench                     # compile benchmarks
 ./verify bench --run               # run benchmarks
+./verify mutants                    # mutation-test today's daily-tier crate (cargo-mutants)
+./verify mutants --crate geometry   # mutation-test one crate
+./verify mutants --tier weekly      # mutation-test the big three (geometry, expression, crs)
+./verify mutants --list             # list mutants without running
 ./verify doctor                    # environment health check
 ./verify all                       # everything (like ci.sh)
 ./verify agent --list              # list agent-runnable validation suites (E16)
@@ -47,6 +51,26 @@ human-readable report plus a machine-readable JSON block, exiting `0` iff no
 check failed. Suites are registered in `validate/src/suites/mod.rs`; a suite
 check reports `pass`, `fail`, or `skip` (a skipped check — e.g. a database that
 is not running — does not fail the run).
+
+## Mutant testing (cargo-mutants)
+
+Mutation testing finds code where a injected bug would slip through the
+test suite — i.e. test gaps. It requires non-flaky tests, so only pure,
+deterministic crates are eligible (guide: <https://mutants.rs/>).
+
+Two tiers, defined in `verify`:
+
+- **Daily** — one small/medium crate per day, round-robin by date:
+  `analysis`, `fixtures`, `oracle`, `render`, `core`, `style`,
+  `spatial-index`. Run `./verify mutants` (also `ci.sh --mutants`).
+- **Weekly** — the big three: `geometry`, `expression`, `crs`
+  (`--shard i/n` splits a run across machines/days).
+
+Survived ("MISSED") mutants are reported in `mutants.out/missed.txt` and
+printed by the gate — they are informational, not failures. Review them and
+either add a test or file a bead for the gap. `cargo-mutants` exit code 2
+means mutants survived; the gate accepts it. `--fail-on-missed` turns
+survives into a hard failure (off by default).
 
 ## Feature map
 

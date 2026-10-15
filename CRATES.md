@@ -37,3 +37,7 @@ crates have one — marked below). Generic gate for the rest:
 - `expressions/` at root is empty/reserved — the real crate is `expression/`.
 - Cross-crate or golden changes: escalate to `./verify all` / `./verify oracle`.
 - Never run raw `cargo` — cargo is not on the agent PATH; always use `./verify`.
+- Mutation testing (cargo-mutants): `./verify mutants` runs today's daily-tier
+  crate (round-robin); `--tier weekly` covers geometry/expression/crs. Only
+  pure deterministic crates are eligible; survived mutants are reported in
+  `mutants.out/missed.txt` for review (add a test or file a bead).

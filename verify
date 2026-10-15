@@ -8,6 +8,7 @@
 #   ./verify oracle [--fixture <path>] [--update-goldens]
 #   ./verify diff <fixture> [--cpp]
 #   ./verify bench [--crate <name>] [--run]
+#   ./verify mutants [--crate <name>] [--tier daily|weekly|all] [--list]
 #   ./verify doctor
 #   ./verify all [--crate <name>] [--geiger]
 #   ./verify agent <suite>            # run an E16 agent-runnable validation suite
@@ -66,6 +67,26 @@ crate_scope() {
 
 nextest_available() {
     command -v cargo-nextest &>/dev/null
+}
+
+# ── mutant testing (cargo-mutants, https://mutants.rs/) ─────────────────────────
+#
+# Tiers of pure, deterministic crates (no FFI, non-flaky tests — the guide's
+# prerequisite). Daily tier: one small/medium crate per day, round-robin by
+# date. Weekly tier: the big three, run sharded or via --tier weekly.
+MUTANT_DAILY_CRATES=(analysis fixtures oracle render core style spatial-index)
+MUTANT_WEEKLY_CRATES=(geometry expression crs)
+
+mutants_installed() {
+    command -v cargo-mutants &>/dev/null
+}
+
+# Print the crate name for today's daily-tier rotation.
+mutants_daily_crate() {
+    local day_of_year
+    day_of_year=$(date +%j)
+    local idx=$((day_of_year % ${#MUTANT_DAILY_CRATES[@]}))
+    echo "${MUTANT_DAILY_CRATES[$idx]}"
 }
 
 # ── subcommands ──────────────────────────────────────────────────────────────
@@ -197,6 +218,78 @@ cmd_bench() {
     fi
 }
 
+cmd_mutants() {
+    local crate="" tier="daily" list=0 baseline="" shard="" check=0 fail_on_missed=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --crate) crate="$2"; shift 2 ;;
+            --tier) tier="$2"; shift 2 ;;
+            --list) list=1; shift ;;
+            --baseline) baseline="$2"; shift 2 ;;
+            --shard) shard="$2"; shift 2 ;;
+            --check) check=1; shift ;;
+            --fail-on-missed) fail_on_missed=1; shift ;;
+            *) die "unknown arg: $1" ;;
+        esac
+    done
+    need_cargo
+    mutants_installed || die "cargo-mutants not installed; run: cargo install --locked cargo-mutants (or download a prebuilt binary from https://github.com/sourcefrog/cargo-mutants/releases)"
+
+    local crates=()
+    if [ -n "$crate" ]; then
+        crates=("$crate")
+    elif [ "$tier" = "daily" ]; then
+        crates=("$(mutants_daily_crate)")
+    elif [ "$tier" = "weekly" ]; then
+        crates=("${MUTANT_WEEKLY_CRATES[@]}")
+    elif [ "$tier" = "all" ]; then
+        crates=("${MUTANT_DAILY_CRATES[@]}" "${MUTANT_WEEKLY_CRATES[@]}")
+    else
+        die "unknown tier: $tier (expected daily|weekly|all)"
+    fi
+
+    local total_missed=0
+    local c
+    for c in "${crates[@]}"; do
+        local pkg="$c"
+        cargo tree --workspace -i "$c" --prefix none &>/dev/null || pkg="qgis-$c"
+        echo "=== cargo mutants -p $pkg (tier: $tier) ==="
+        local args=(-p "$pkg")
+        [ "$list" -eq 1 ] && args+=(--list)
+        [ -n "$baseline" ] && args+=(--baseline "$baseline")
+        [ -n "$shard" ] && args+=(--shard "$shard")
+        [ "$check" -eq 1 ] && args+=(--check)
+        # shellcheck disable=SC2086
+        # Exit codes: 0 = all caught, 2 = some mutants missed (informational
+        # for us — reviewing misses is the point of the gate), 1 = error.
+        local rc=0
+        cargo mutants "${args[@]}" || rc=$?
+        if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
+            die "cargo mutants failed for $pkg (exit $rc)"
+        fi
+        echo ""
+
+        if [ "$list" -eq 0 ] && [ -f "mutants.out/missed.txt" ]; then
+            local missed
+            missed=$(grep -c . "mutants.out/missed.txt" 2>/dev/null || echo 0)
+            total_missed=$((total_missed + missed))
+            if [ "$missed" -gt 0 ]; then
+                echo "--- MISSED MUTANTS in $pkg ($missed — test gaps to review) ---"
+                sed 's/^/    /' "mutants.out/missed.txt"
+                echo ""
+            fi
+        fi
+    done
+
+    if [ "$list" -eq 0 ]; then
+        echo "=== mutants: $total_missed missed across ${#crates[@]} crate(s); full report in mutants.out/ ==="
+        if [ "$fail_on_missed" -eq 1 ] && [ "$total_missed" -gt 0 ]; then
+            echo "error: --fail-on-missed set and $total_missed mutants survived" >&2
+            exit 1
+        fi
+    fi
+}
+
 cmd_doctor() {
     need_cargo
     local ok=1
@@ -221,6 +314,12 @@ cmd_doctor() {
         echo "geiger: $(cargo geiger --version 2>/dev/null || echo present)"
     else
         echo "geiger: not installed (optional, ./verify all --geiger will skip)"
+    fi
+
+    if mutants_installed; then
+        echo "mutants: $(cargo mutants --version 2>/dev/null || echo present)"
+    else
+        echo "mutants: not installed (optional, ./verify mutants will error; install: cargo install --locked cargo-mutants)"
     fi
 
     if [ -n "${QGIS_CPP_BINARY:-}" ]; then
@@ -371,6 +470,7 @@ case "${1:-}" in
     oracle) shift; cmd_oracle "$@" ;;
     diff)   shift; cmd_diff "$@" ;;
     bench)  shift; cmd_bench "$@" ;;
+    mutants) shift; cmd_mutants "$@" ;;
     doctor) shift; cmd_doctor "$@" ;;
     all)    shift; cmd_all "$@" ;;
     agent)  shift; cmd_agent "$@" ;;

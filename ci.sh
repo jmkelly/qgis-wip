@@ -12,6 +12,10 @@
 #   --nextest    Use 'cargo nextest run' instead of 'cargo test' when available.
 #                Falls back to 'cargo test' with a warning if nextest is missing.
 #   --geiger     Also run cargo-geiger (informational, not a hard gate).
+#   --mutants    Also run cargo-mutants (mutation testing) on the daily tier
+#                (one small/medium pure crate, round-robin by date).
+#                Informational: survived mutants are reported, not failed.
+#                Requires cargo-mutants (https://mutants.rs/).
 #   --help, -h   Show this help message and exit.
 set -euo pipefail
 
@@ -22,6 +26,7 @@ CRATE=""
 OFFLINE=0
 NEXTEST=0
 GEIGER=0
+MUTANTS=0
 
 usage() {
     sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
@@ -47,6 +52,10 @@ while [ $# -gt 0 ]; do
             ;;
         --geiger)
             GEIGER=1
+            shift
+            ;;
+        --mutants)
+            MUTANTS=1
             shift
             ;;
         --help|-h)
@@ -185,6 +194,17 @@ if [ "$GEIGER" -eq 1 ]; then
     fi
 else
     echo "--- [5/5] cargo-geiger skipped (pass --geiger to enable) ---"
+fi
+
+# --- Gate 6: cargo-mutants (optional, informational) ---
+if [ "$MUTANTS" -eq 1 ]; then
+    echo "--- [6/6] cargo mutants (daily tier, informational) ---"
+    if ! command -v cargo-mutants &>/dev/null; then
+        echo "cargo-mutants not installed; skipping (run: cargo install --locked cargo-mutants)"
+    else
+        ./verify mutants
+    fi
+    echo ""
 fi
 
 echo ""
