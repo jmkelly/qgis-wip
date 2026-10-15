@@ -25,7 +25,7 @@ This runbook adapts the SpatialEngine swarm pattern to the QGIS Rust workspace:
 | --- | --- |
 | Process epic | `qgis-uic` (velocity / parallelisation) |
 | Port epics | `E0` scaffold … `E9` hardening (see `rust-port-agent-loop.md` §2) |
-| Provider / model | `opencode` / `opencode-go/longcat-2.5-preview-free` (pinned for workers; re-check with `paseo list_providers` / `paseo list_models` if a spawn fails) |
+| Provider / model | `opencode` / `opencode-go/longcat-2.5-preview-free` (pinned for workers; re-check with `paseo provider ls` / `paseo provider models` if a spawn fails) |
 | Mode | none required; the CLI agent runs in its configured mode |
 | Concurrency cap | **6** worker worktrees (the coordinator is not a worktree and does not count) |
 | Cron | `*/5` — every 5 minutes (Australia/Sydney) |
@@ -144,7 +144,7 @@ For each worktree workspace under `~/.paseo/worktrees/`:
   unfiltered agent listing may omit active agents living in worktree
   workspaces because of list limits/sorting. Before ANY archive or `rm -rf`,
   run the agent listing filtered by `cwd=<worktree-path>` (e.g.
-  `paseo_list_agents --cwd <worktree-path>`, and/or `paseo_get_agent_status`
+  `paseo ls --cwd <worktree-path>`, and/or `paseo inspect <agent-id>`
   on the agent ids recorded in the bead notes). `status=running` means
   **leave it alone** — never archive or remove a worktree with a running
   agent.
