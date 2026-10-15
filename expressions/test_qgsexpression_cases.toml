@@ -5,7 +5,7 @@
 # Each case records an expression and the expected result of
 # QgsExpression::simplified().dump() (or evaluate() where noted) as
 # asserted by the upstream test. These are the inputs the Rust
-# expression engine (crates/expression) must reproduce.
+# expression engine (expression) must reproduce.
 #
 # Case schema:
 #   expression  - source expression string

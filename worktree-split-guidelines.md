@@ -57,7 +57,7 @@ committed files):
 |---|---|---|
 | `Cargo.lock` | every dependency addition | orchestrator-only |
 | root `Cargo.toml` | new crate members | orchestrator-only |
-| `crates/*/Cargo.toml` | dependency additions | one agent per crate; if same crate, serialize |
+| `*/Cargo.toml` | dependency additions | one agent per crate; if same crate, serialize |
 | `*/src/lib.rs` | new module declarations | one agent per crate |
 | `*/src/functions/mod.rs` | new function registration | one agent per module subtree |
 | `oracle/goldens/` | golden file updates | single-writer (orchestrator) |
@@ -94,7 +94,7 @@ These files are **never** edited by implementers:
 |---|---|---|
 | `Cargo.lock` | orchestrator at merge time | run `cargo update` locally, report new deps |
 | root `Cargo.toml` | orchestrator | don't edit |
-| `crates/*/Cargo.toml` | one agent per crate (if same crate, serialize) | don't edit |
+| `*/Cargo.toml` | one agent per crate (if same crate, serialize) | don't edit |
 | `oracle/goldens/` | orchestrator (`oracle record`) | `oracle verify` / `oracle diff` only |
 | `fixtures/` | append-only: new files only | never edit existing fixture |
 
@@ -244,10 +244,10 @@ WIP commits every 15-20 minutes contradict the conservative git policy in
 AGENTS.md. **Proposed fix:** remove §11, or gate it behind an explicit
 orchestrator opt-in ("only when the orchestrator passes --allow-commits").
 
-**A3. §3 and §5 use `crates/*/Cargo.toml` paths — this repo has crates at
-the root.** The workspace members are `geometry/`, `crs/`, `expression/`, etc.,
-not `crates/geometry/`. **Proposed fix:** change all `crates/*/` references
-to root-level `*/Cargo.toml` and `*/src/`.
+**A3. §3 and §5 used nested crate paths — this repo has crates at the root.**
+The workspace members are `geometry/`, `crs/`, `expression/`, etc., directly
+under the repo root. **Resolved (bead qgis-7w1):** §3 and §5 now reference
+root-level `*/Cargo.toml` and `*/src/`.
 
 ### B. Incomplete coverage (should add)
 
@@ -297,7 +297,7 @@ that `render/` is a cross-cutting concern and should be locked early.
 | Section | Action | Priority |
 |---|---|---|
 | §2 | Add ADR/GLOSSARY reference | Medium |
-| §3 | Fix `crates/*/` → root-level paths | High |
+| §3 | ✅ Resolved (qgis-7w1): root-level `*/Cargo.toml` paths | High |
 | §4 | Add missing crates to DAG | High |
 | §5 | Fix paths; add `fixtures/manifest.toml` | High |
 | §6 | Add `./verify` CLI reference | Medium |

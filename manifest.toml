@@ -2,7 +2,7 @@
 #
 # Catalog of oracle fixtures collected from the QGIS 4 source tree
 # (tests/testdata/, tests/src/python/). Parsed by the qgis-fixtures crate
-# (crates/fixtures) using a constrained TOML subset: [meta] string pairs
+# (fixtures) using a constrained TOML subset: [meta] string pairs
 # plus [fixture.<name>] sections with the keys below.
 #
 # Fixture entry keys:
