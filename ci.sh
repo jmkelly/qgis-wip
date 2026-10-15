@@ -133,7 +133,7 @@ echo ""
 echo "--- [3/5] bench compile ---"
 if [ -n "$CRATE" ]; then
     # Check if the crate has benches
-    CRATE_DIR="crates/$CRATE"
+    CRATE_DIR="$CRATE"
     if [ -d "$CRATE_DIR/benches" ] || grep -q '\[\[bench\]\]' "$CRATE_DIR/Cargo.toml" 2>/dev/null; then
         echo "cargo bench -p $CRATE --no-run"
         cargo bench -p "$CRATE" --no-run ${OFFLINE_FLAG[@]+"${OFFLINE_FLAG[@]}"}

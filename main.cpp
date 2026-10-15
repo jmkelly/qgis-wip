@@ -3,7 +3,7 @@
 //! Bead qgis-uic.7: a full QGIS build is impractical here (no system
 //! cmake, 30-60+ minute compile), so this harness emits the same
 //! canonical output format as the Rust oracle backend
-//! (crates/oracle/src/rust_backend.rs) with the backend
+//! (oracle/src/rust_backend.rs) with the backend
 //! self-identification line set to "cpp". The oracle strips the
 //! backend line before comparing, so only fixture-derived content
 //! (name, bytes, lines, body) can drift.

@@ -175,7 +175,7 @@ implementer runs before reporting done. This ensures that code merged to
 | Test | `cargo test --workspace` | Primary correctness gate |
 | Lint | `cargo clippy --workspace --all-targets -- -D warnings` | Enforce zero warnings |
 | Bench compile | `cargo bench -p qgis-bench --no-run` | Verify criterion benches compile |
-| Oracle smoke | `cargo run -p qgis-oracle -- crates/oracle/fixtures/trivial.txt` | Verify oracle harness works |
+| Oracle smoke | `cargo run -p qgis-oracle -- oracle/fixtures/trivial.txt` | Verify oracle harness works |
 | Geiger | `cargo geiger --workspace` | Informational: verify no unsafe/FFI |
 
 ### Local CI script
@@ -204,13 +204,13 @@ pre-commit checks or manual verification.
 
 The E0 scaffold epic is complete:
 
-- **Oracle harness** (`rust/crates/oracle/`): C++/Rust diff oracle with
+- **Oracle harness** (`oracle/`): C++/Rust diff oracle with
   golden-file store. CLI supports `verify`, `run`, `record`, and `diff`
-  subcommands. Fixtures live in `crates/oracle/fixtures/`, goldens in
-  `crates/oracle/goldens/`.
-- **Fixture store** (`rust/crates/fixtures/`): Shared test fixtures for
+  subcommands. Fixtures live in `oracle/fixtures/`, goldens in
+  `oracle/goldens/`.
+- **Fixture store** (`fixtures/`): Shared test fixtures for
   workspace crates.
-- **Criterion benches** (`rust/crates/qgis-bench/`): Benchmarks for hot
+- **Criterion benches** (`qgis-bench/`): Benchmarks for hot
   paths (render, index, expression, raster) using the `criterion` crate.
 - **CI pipeline** (`.github/workflows/rust-port.yml`): Runs test, clippy,
   bench compile, oracle smoke, and geiger on every push/PR.

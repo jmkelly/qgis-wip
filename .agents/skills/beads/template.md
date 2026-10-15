@@ -26,7 +26,7 @@ cargo test -p <crate-name>
 cargo test -p <crate-name> --lib
 
 # Oracle golden verify
-cargo run -p qgis-oracle -- verify crates/oracle/fixtures/<fixture>.txt
+cargo run -p qgis-oracle -- verify oracle/fixtures/<fixture>.txt
 
 # Workspace gates
 ./ci.sh

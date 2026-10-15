@@ -6,17 +6,17 @@ Pure-Rust reimplementation of QGIS 4.x. No FFI to GDAL, GEOS, PROJ, Qt, or any C
 
 | Crate | Package name | Purpose |
 |-------|-------------|---------|
-| `crates/geometry` | `qgis-geometry` | Geometry primitives (replacing GEOS) |
-| `crates/crs` | `qgis-crs` | Coordinate Reference Systems — projections via `proj4rs`, CRS/EPSG/WKT2 facade |
-| `crates/expression` | `qgis-expression` | Expression engine (replacing Qwt-expression) |
-| `crates/providers` | `qgis-providers` | Data providers (replacing GDAL/SpatiaLite/PDAL/MDAL) |
-| `crates/analysis` | `qgis-analysis` | Analysis tools |
-| `crates/server` | `qgis-server` | Server (WMS/WFS/etc.) |
-| `crates/pyo3` | `qgis-pyo3` | PyO3 Python bindings (replacing SIP/PyQt6) |
-| `crates/gui` | `qgis-gui` | GUI (iced + wgpu, built last) |
-| `crates/oracle` | `qgis-oracle` | C++/Rust diff oracle harness |
-| `crates/fixtures` | `qgis-fixtures` | Shared test fixtures |
-| `crates/qgis-bench` | `qgis-bench` | Criterion benchmarks |
+| `geometry` | `qgis-geometry` | Geometry primitives (replacing GEOS) |
+| `crs` | `qgis-crs` | Coordinate Reference Systems — projections via `proj4rs`, CRS/EPSG/WKT2 facade |
+| `expression` | `qgis-expression` | Expression engine (replacing Qwt-expression) |
+| `providers` | `qgis-providers` | Data providers (replacing GDAL/SpatiaLite/PDAL/MDAL) |
+| `analysis` | `qgis-analysis` | Analysis tools |
+| `server` | `qgis-server` | Server (WMS/WFS/etc.) |
+| `pyo3` | `qgis-pyo3` | PyO3 Python bindings (replacing SIP/PyQt6) |
+| `gui` | `qgis-gui` | GUI (iced + wgpu, built last) |
+| `oracle` | `qgis-oracle` | C++/Rust diff oracle harness |
+| `fixtures` | `qgis-fixtures` | Shared test fixtures |
+| `qgis-bench` | `qgis-bench` | Criterion benchmarks |
 
 ## Build order
 

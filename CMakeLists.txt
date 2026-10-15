@@ -6,7 +6,7 @@ project(qgis_oracle_harness LANGUAGES CXX)
 # 30-60+ minute compile), so this harness plays the role of
 # $QGIS_CPP_BINARY at E0: it reads a fixture file and emits the same
 # canonical output format as the Rust oracle backend
-# (crates/oracle/src/rust_backend.rs) with the backend
+# (oracle/src/rust_backend.rs) with the backend
 # self-identification line set to "cpp".
 #
 # Build (out of tree):

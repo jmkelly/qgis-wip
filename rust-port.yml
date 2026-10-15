@@ -61,7 +61,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run oracle on trivial fixture
         working-directory: rust
-        run: cargo run -p qgis-oracle -- crates/oracle/fixtures/trivial.txt
+        run: cargo run -p qgis-oracle -- oracle/fixtures/trivial.txt
 
   geiger:
     name: geiger (informational)
