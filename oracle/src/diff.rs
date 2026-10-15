@@ -403,6 +403,90 @@ mod tests {
     }
 
     #[test]
+    fn lcs_dp_indexing_insertion_at_depth() {
+        // Insertions at i >= 2 and j >= 2: the shifted lines must stay
+        // context. Pins the exact edit script (and hunk header) produced by
+        // the DP table — an off-by-one in the match arm (i+1/j+1) or the
+        // backtracking comparison would render these lines as
+        // remove+add pairs instead of context.
+        let old = "a\nb\nc\nd\ne\n";
+        let new = "a\nx\nb\nc\ny\nd\ne\n";
+        let diff = Diff::between(old, new);
+        assert!(!diff.is_empty());
+        let rendered = diff.render("old", "new");
+        assert_eq!(
+            rendered,
+            "--- old\n+++ new\n@@ -1,5 +1,7 @@\n a\n+x\n b\n c\n+y\n d\n e\n",
+            "rendered:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn lcs_dp_indexing_deletion_at_depth() {
+        // Mirror of `lcs_dp_indexing_insertion_at_depth`: deletions at
+        // i >= 2 and j >= 2 must stay context on both sides.
+        let old = "a\nx\nb\nc\ny\nd\ne\n";
+        let new = "a\nb\nc\nd\ne\n";
+        let diff = Diff::between(old, new);
+        assert!(!diff.is_empty());
+        let rendered = diff.render("old", "new");
+        assert_eq!(
+            rendered,
+            "--- old\n+++ new\n@@ -1,7 +1,5 @@\n a\n-x\n b\n c\n-y\n d\n e\n",
+            "rendered:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn lcs_dp_match_arm_indices_with_repeated_lines() {
+        // Repeated lines give the match arm a choice of alignment. With
+        // i * 1 instead of i + 1 (or j * 1 instead of j + 1) in the match
+        // recurrence, the DP values shift and the backtracking emits a
+        // remove+add pair for lines that are really common.
+        let old = "a\na\n";
+        let new = "b\na\na\n";
+        let diff = Diff::between(old, new);
+        let rendered = diff.render("old", "new");
+        assert_eq!(
+            rendered,
+            "--- old\n+++ new\n@@ -1,2 +1,3 @@\n+b\n a\n a\n",
+            "rendered:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn lcs_dp_mismatch_arm_indices_with_repeated_lines() {
+        // Repeated lines on both sides: with i * 1 or j * 1 in the mismatch
+        // recurrence, one DP direction is dropped and the backtracking
+        // chooses Added where the table says Removed (or vice versa).
+        let old = "a\nb\na\n";
+        let new = "c\na\n";
+        let diff = Diff::between(old, new);
+        let rendered = diff.render("old", "new");
+        assert_eq!(
+            rendered,
+            "--- old\n+++ new\n@@ -1,3 +1,2 @@\n-a\n-b\n+c\n a\n",
+            "rendered:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn lcs_dp_all_indices_with_repeated_lines() {
+        // Four-line inputs with repeats exercise DP cells at i >= 2 and
+        // j >= 2 across both arms and the backtracking; any i * 1 / j * 1
+        // index shift changes the rendered edit script.
+        let old = "a\na\nb\na\n";
+        let new = "c\na\na\nc\n";
+        let diff = Diff::between(old, new);
+        let rendered = diff.render("old", "new");
+        assert_eq!(
+            rendered,
+            "--- old\n+++ new\n@@ -1,4 +1,4 @@\n-a\n+c\n a\n-b\n a\n+c\n",
+            "rendered:\n{rendered}"
+        );
+    }
+
+    #[test]
     fn render_labels_appear_in_header() {
         let diff = Diff::between("a\n", "b\n");
         let rendered = diff.render("goldens/trivial.expected", "actual");
