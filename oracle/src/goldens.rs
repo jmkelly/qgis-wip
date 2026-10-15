@@ -262,6 +262,24 @@ mod tests {
     }
 
     #[test]
+    fn from_env_falls_back_on_empty_and_whitespace_override() {
+        let _guard = crate::env_lock().lock().unwrap();
+        let default_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("goldens")
+            .join("trivial.expected");
+        for value in ["", "   "] {
+            std::env::set_var("QGIS_ORACLE_GOLDEN_DIR", value);
+            let store = GoldenStore::from_env();
+            assert_eq!(
+                store.golden_path("trivial"),
+                default_path,
+                "QGIS_ORACLE_GOLDEN_DIR set to {value:?} must fall back to the default goldens dir"
+            );
+        }
+        std::env::remove_var("QGIS_ORACLE_GOLDEN_DIR");
+    }
+
+    #[test]
     fn verify_ignores_backend_self_identification_line() {
         let dir = temp_dir("verify-backend-line");
         let store = GoldenStore::new(&dir);
