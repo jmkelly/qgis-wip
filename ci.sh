@@ -153,8 +153,8 @@ echo "--- [4/5] oracle ---"
 if [ -n "$CRATE" ] && [ "$CRATE" != "qgis-oracle" ]; then
     echo "crate '$CRATE' has no oracle integration; skipping oracle"
 else
-    echo "cargo run -p qgis-oracle -- crates/oracle/fixtures/trivial.txt"
-    cargo run -p qgis-oracle -- crates/oracle/fixtures/trivial.txt ${OFFLINE_FLAG[@]+"${OFFLINE_FLAG[@]}"}
+    echo "cargo run -p qgis-oracle -- oracle/fixtures/trivial.txt"
+    cargo run -p qgis-oracle -- oracle/fixtures/trivial.txt ${OFFLINE_FLAG[@]+"${OFFLINE_FLAG[@]}"}
     echo ""
 
     if [ -n "${QGIS_CPP_BINARY:-}" ]; then
@@ -163,14 +163,14 @@ else
             exit 1
         fi
         echo "Live C++ oracle diff against $QGIS_CPP_BINARY:"
-        for fixture in crates/oracle/fixtures/*; do
+        for fixture in oracle/fixtures/*; do
             [ -f "$fixture" ] || continue
             echo "cargo run -p qgis-oracle -- diff $fixture --backend-a rust --backend-b cpp"
             cargo run -p qgis-oracle -- diff "$fixture" --backend-a rust --backend-b cpp ${OFFLINE_FLAG[@]+"${OFFLINE_FLAG[@]}"}
         done
     else
         echo "warning: QGIS_CPP_BINARY not set; skipping live C++ oracle diff."
-        echo "         Build rust/cpp_harness and set QGIS_CPP_BINARY to enable it (see crates/oracle/README.md)."
+        echo "         Build rust/cpp_harness and set QGIS_CPP_BINARY to enable it (see oracle/README.md)."
     fi
 fi
 echo ""

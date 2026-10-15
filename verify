@@ -125,7 +125,7 @@ cmd_oracle() {
     done
     need_cargo
 
-    local fixtures_dir="crates/oracle/fixtures"
+    local fixtures_dir="oracle/fixtures"
     local f
     if [ -n "$fixture" ]; then
         [ -f "$fixture" ] || die "fixture not found: $fixture"
@@ -167,7 +167,7 @@ cmd_diff() {
 
     if [ "$cpp" -eq 1 ]; then
         if [ -z "${QGIS_CPP_BINARY:-}" ]; then
-            die "QGIS_CPP_BINARY not set; build rust/cpp_harness first (see crates/oracle/README.md)"
+            die "QGIS_CPP_BINARY not set; build rust/cpp_harness first (see oracle/README.md)"
         fi
         echo "=== oracle diff $fixture (rust vs cpp) ==="
         cargo run -p qgis-oracle -- diff "$fixture" --backend-a rust --backend-b cpp
@@ -295,7 +295,7 @@ cmd_all() {
         echo ""
         if [ -n "${QGIS_CPP_BINARY:-}" ] && [ -x "$QGIS_CPP_BINARY" ]; then
             local f
-            for f in crates/oracle/fixtures/*; do
+            for f in oracle/fixtures/*; do
                 [ -f "$f" ] || continue
                 cmd_diff "$f" --cpp
             done

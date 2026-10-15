@@ -90,11 +90,11 @@ C++ diff:
 
 ```sh
 export QGIS_CPP_BINARY=rust/cpp_harness/build/qgis_oracle_harness
-cargo run -p qgis-oracle -- diff crates/oracle/fixtures/trivial.txt --backend-a rust --backend-b cpp
+cargo run -p qgis-oracle -- diff oracle/fixtures/trivial.txt --backend-a rust --backend-b cpp
 ```
 
 `./ci.sh` runs this live diff for every fixture in
-`crates/oracle/fixtures/` when `QGIS_CPP_BINARY` is set; without it the
+`oracle/fixtures/` when `QGIS_CPP_BINARY` is set; without it the
 gate prints a warning and skips the C++ diff (the Rust-side smoke
 verify still runs). At E1+, point `QGIS_CPP_BINARY` at a real QGIS
 binary instead — the interface (`<binary> <fixture-path>`, canonical
