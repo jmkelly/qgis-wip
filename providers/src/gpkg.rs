@@ -98,7 +98,9 @@ fn rv_to_json(v: ValueRef) -> Value {
     }
 }
 
-pub fn read_gpkg(path: impl AsRef<Path>) -> Result<Vec<Feature>, String> {
+/// Returns the names of feature tables in a GeoPackage, in read order:
+/// `gpkg_contents` entries first, then any user tables as a fallback.
+pub fn feature_tables(path: impl AsRef<Path>) -> Result<Vec<String>, String> {
     let p = path.as_ref();
     let conn = Connection::open(p).map_err(|e| e.to_string())?;
     // find feature tables
@@ -112,8 +114,13 @@ pub fn read_gpkg(path: impl AsRef<Path>) -> Result<Vec<Feature>, String> {
         let rows = s2.query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())?;
         for r in rows { tables.push(r.map_err(|e| e.to_string())?); }
     }
+    Ok(tables)
+}
+
+pub fn read_gpkg(path: impl AsRef<Path>) -> Result<Vec<Feature>, String> {
+    let conn = Connection::open(path.as_ref()).map_err(|e| e.to_string())?;
     let mut all = Vec::new();
-    for t in tables {
+    for t in feature_tables(&path)? {
         // geometry column
         let geom_col: Option<String> = conn.query_row(
             "SELECT column_name FROM gpkg_geometry_columns WHERE table_name=?1", rusqlite::params![t],
