@@ -40,12 +40,20 @@ fn dialog_frame<'a>(title: &'a str, content: Column<'a, Message>) -> Element<'a,
     .into()
 }
 
-/// File open dialog: enter a path to a .shp, .geojson, or .gpkg file.
+/// File open dialog: enter a path to a spatial file or a `.qgs` project.
+///
+/// The accepted extensions are the dialog's file filters
+/// ([`crate::app::OPEN_FILE_FILTERS`]): `.shp`, `.geojson`, `.json`, `.gpkg`
+/// and `.qgs`.
 fn file_open_dialog(path: &str) -> Element<'_, Message> {
+    let hint = format!(
+        "Enter the path to a spatial file or QGIS project ({}):",
+        crate::app::open_file_filter()
+    );
     dialog_frame(
         "Open Spatial File",
         column![
-            text("Enter the path to a shapefile (.shp), GeoJSON (.geojson), or GeoPackage (.gpkg):"),
+            text(hint),
             text_input("path/to/file.shp", path)
                 .on_input(Message::FileDialogInputChanged)
                 .on_submit(Message::FileDialogConfirm),

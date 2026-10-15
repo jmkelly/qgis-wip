@@ -15,7 +15,7 @@ use qgis_crs::{Camera, SrsId};
 use qgis_providers::geojson::GeoJsonProvider;
 use qgis_providers::gpkg::{feature_tables, GpkgProvider};
 use qgis_providers::FeatureProvider;
-use qgis_style::{parse_qml_file, StyleModel};
+use qgis_style::StyleModel;
 
 use crate::dialogs;
 use crate::layer_panel;
@@ -411,6 +411,24 @@ fn file_menu_items() -> Vec<(&'static str, Message)> {
     ]
 }
 
+/// The file filters (extensions) the Open Spatial File dialog accepts, in
+/// display order. This is the single source of truth for the dialog's name
+/// filter and for [`load_layer_from_path`]'s dispatch.
+///
+/// `.qgs` is included: a QGIS project file is a supported file, and opening
+/// one restores the whole project — layers, styles, CRS and viewport — rather
+/// than loading a single layer (bead qgis-q69, E15.3).
+pub const OPEN_FILE_FILTERS: &[&str] = &["shp", "geojson", "json", "gpkg", "qgs"];
+
+/// The Open Spatial File dialog's name filter, e.g. `"*.shp, *.geojson, …"`.
+pub fn open_file_filter() -> String {
+    OPEN_FILE_FILTERS
+        .iter()
+        .map(|ext| format!("*.{ext}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Map canvas widget.
 fn map_canvas(state: &AppState) -> Element<'_, Message> {
     Canvas::new(MapProgram {
@@ -433,12 +451,21 @@ fn status_bar(state: &AppState) -> Element<'_, Message> {
 // Helper functions
 // ---------------------------------------------------------------------------
 
-/// Loads a layer from a file path, detecting format by extension.
+/// Loads a file from the Open Spatial File dialog, detecting its format by
+/// extension ([`OPEN_FILE_FILTERS`]).
 ///
 /// Supports `.shp` (shapefile), `.geojson`/`.json` (GeoJSON), and `.gpkg`
-/// (GeoPackage). On success, adds the layer to the registry and fits the
-/// viewport to the layer extent.
+/// (GeoPackage): the layer is added to the registry and the viewport is fitted
+/// to the layer extent. A `.qgs` project is opened instead, restoring the whole
+/// project — layers, styles, CRS and viewport — over the current state.
 fn load_layer_from_path(state: &mut AppState, path: &str) {
+    if path.ends_with(".qgs") {
+        if let Err(e) = crate::project::open_project(state, path) {
+            state.dialog = Some(Dialog::Error { message: e });
+        }
+        return;
+    }
+
     let result = if path.ends_with(".shp") {
         load_shapefile_as_layer(path)
     } else if path.ends_with(".geojson") || path.ends_with(".json") {
@@ -1012,6 +1039,87 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&qgs_path);
+    }
+
+    // -----------------------------------------------------------------------
+    // Bead qgis-q69 (E15.3): the Open Spatial File dialog's file filters
+    // include `.qgs`, so a project opened from the generic open action restores
+    // its layers, styles, and viewport.
+    // -----------------------------------------------------------------------
+
+    /// A `.qgs` project is a supported file filter of the Open Spatial File
+    /// dialog, and opening one through that dialog restores the project
+    /// (layers + styles + viewport) instead of failing as an unsupported file.
+    #[test]
+    fn file_open_dialog_opens_qgs_project() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let shp = root
+            .join("../provider-samples/france_parts.shp")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let qml = root.join("../styles/polys.qml").to_str().unwrap().to_string();
+        let qgs = std::env::temp_dir().join(format!("qgis-q69-open-{}.qgs", std::process::id()));
+        let qgs = qgs.to_str().unwrap().to_string();
+
+        // Build a project: one styled layer with a distinct viewport.
+        let mut src = state_with_layer(&shp);
+        assign_style_to_layer_0(&mut src, &qml);
+        src.camera = Camera::new((0.5, 0.25), 7.5, (1024.0, 768.0));
+        let _ = update(&mut src, Message::SaveProjectDialog);
+        let _ = update(&mut src, Message::ProjectPathChanged(qgs.clone()));
+        let _ = update(&mut src, Message::ProjectSaveConfirm);
+
+        // Reopen it through the *file open* dialog (not Open Project).
+        let mut dst = AppState::default();
+        let _ = update(&mut dst, Message::OpenFileDialog);
+        let _ = update(&mut dst, Message::FileDialogInputChanged(qgs.clone()));
+        let _ = update(&mut dst, Message::FileDialogConfirm);
+
+        assert!(
+            dst.dialog.is_none(),
+            "opening a .qgs must not error: {:?}",
+            dst.dialog
+        );
+        assert_eq!(
+            dst.registry.len(),
+            1,
+            "the project's layer should be restored"
+        );
+        assert_eq!(
+            dst.styles.len(),
+            1,
+            "the project's style should be restored"
+        );
+        assert!(
+            (dst.camera.zoom - 7.5).abs() < 1e-9,
+            "viewport zoom should be restored, got {}",
+            dst.camera.zoom
+        );
+
+        let _ = std::fs::remove_file(&qgs);
+    }
+
+    /// The Open Spatial File dialog's file filters include `.qgs`, and the name
+    /// filter shown in the dialog is derived from that list, so the hint and
+    /// the dispatch cannot drift apart.
+    #[test]
+    fn open_file_filters_include_qgs() {
+        assert!(
+            OPEN_FILE_FILTERS.contains(&"qgs"),
+            "file filters must include .qgs: {OPEN_FILE_FILTERS:?}"
+        );
+        for ext in ["shp", "geojson", "gpkg"] {
+            assert!(
+                OPEN_FILE_FILTERS.contains(&ext),
+                "file filters should keep {ext}: {OPEN_FILE_FILTERS:?}"
+            );
+        }
+        let filter = open_file_filter();
+        assert!(
+            filter.contains("*.qgs"),
+            "name filter should list .qgs: {filter}"
+        );
     }
 
     // -----------------------------------------------------------------------
