@@ -15,7 +15,7 @@ use qgis_crs::{Camera, SrsId};
 use qgis_providers::geojson::GeoJsonProvider;
 use qgis_providers::gpkg::{feature_tables, GpkgProvider};
 use qgis_providers::FeatureProvider;
-use qgis_style::{parse_qml_file, StyleModel};
+use qgis_style::StyleModel;
 
 use crate::dialogs;
 use crate::layer_panel;
