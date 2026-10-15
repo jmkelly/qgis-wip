@@ -45,7 +45,7 @@ fn expected_fixture_counts_by_category() {
     assert_eq!(manifest.by_category(Category::QgsProject).count(), 9);
     assert_eq!(manifest.by_category(Category::Style).count(), 11);
     assert_eq!(manifest.by_category(Category::Expression).count(), 1);
-    assert_eq!(manifest.by_category(Category::ProviderSample).count(), 11);
+    assert_eq!(manifest.by_category(Category::ProviderSample).count(), 12);
 }
 
 #[test]

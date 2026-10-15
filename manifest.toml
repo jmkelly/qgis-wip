@@ -12,9 +12,9 @@
 #   sidecars    - optional array of additional files required by the fixture
 #   description - what the fixture exercises
 #
-# All fixtures in this store are real QGIS 4 test data (no synthetic
-# entries yet). See README.md in this directory for provenance and
-# licensing.
+# All fixtures in this store are real QGIS 4 test data, except entries
+# marked source = "synthetic" (authored for the agent validation suites).
+# See README.md in this directory for provenance and licensing.
 
 [meta]
 name = "qgis4-oracle-fixtures"
@@ -223,3 +223,9 @@ category = "provider-sample"
 source = "tests/testdata/checker360by180.asc"
 path = "provider-samples/checker360by180.asc"
 description = "ESRI ASCII grid raster; exercises the AAIGrid raster provider."
+
+[fixture.provider_validation_points_gpkg]
+category = "provider-sample"
+source = "synthetic"
+path = "provider-samples/validation_points.gpkg"
+description = "Small synthetic 3-feature point GeoPackage in EPSG:4326 with name/value attributes; exercises the GPKG provider end to end in the agent validation suite."
