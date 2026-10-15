@@ -131,6 +131,18 @@ pub enum Message {
     DismissError,
     /// Toggle the File menu dropdown.
     ToggleFileMenu,
+
+    // Camera control (headless harness, bead qgis-5gj)
+    /// Zoom in by a factor of 1.25.
+    ZoomIn,
+    /// Zoom out by a factor of 1.25.
+    ZoomOut,
+    /// Pan the viewport by a screen-space delta `(dx, dy)`.
+    Pan { dx: f64, dy: f64 },
+    /// Jump the viewport to an exact camera.
+    SetCamera(Camera),
+    /// Fit the viewport to the loaded layer extent and bump the generation.
+    ResetCamera,
 }
 
 /// Update function for the application.
@@ -333,6 +345,39 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
         }
         Message::ToggleFileMenu => {
             state.file_menu_open = !state.file_menu_open;
+            Task::none()
+        }
+
+        // ---- Camera control (headless harness, bead qgis-5gj) ----
+        Message::ZoomIn => {
+            state.camera.zoom *= 1.25;
+            Task::none()
+        }
+        Message::ZoomOut => {
+            state.camera.zoom /= 1.25;
+            Task::none()
+        }
+        Message::Pan { dx, dy } => {
+            // Pan by a screen-space delta: the world point that used to sit
+            // `dx` pixels left and `dy` pixels up of the viewport center now
+            // sits at the center. `screen_to_world` inverts the transform at
+            // the current zoom, so no private scale helper is needed here.
+            let center = (state.camera.viewport.0 / 2.0, state.camera.viewport.1 / 2.0);
+            state.camera.center = state.camera.screen_to_world((center.0 - dx, center.1 - dy));
+            Task::none()
+        }
+        Message::SetCamera(camera) => {
+            state.camera = camera;
+            Task::none()
+        }
+        Message::ResetCamera => {
+            // Fit to the first loaded layer that has an extent; bump the
+            // generation so the canvas re-reads the camera.
+            let extent = state.registry.iter().find_map(|layer| layer.extent());
+            if let Some(extent) = extent {
+                state.camera = camera_for_extent(extent, state.camera.viewport);
+                state.generation += 1;
+            }
             Task::none()
         }
     }

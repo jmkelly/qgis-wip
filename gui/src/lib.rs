@@ -12,6 +12,7 @@
 pub mod app;
 pub mod attribute_table;
 pub mod dialogs;
+pub mod headless;
 pub mod layer_panel;
 pub mod layer_renderer;
 pub mod map_canvas;
