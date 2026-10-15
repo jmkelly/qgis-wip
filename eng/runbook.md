@@ -332,7 +332,7 @@ on branch bd/BEAD_ID. The bead is already claimed by you.
    coordination note. The description names the exact files and lines; trust
    them. Read `worktree-split-guidelines.md` §3 for the shared-file list and
    confirm none of them is in your change set.
-2. Read `AGENTS.md`, then `docs/adr/0001`–`docs/adr/0006` for the standing
+2. Read `AGENTS.md`, then `0001`–`0006` for the standing
    shape. The code is the documentation.
 3. TEST FIRST. Write the failing reproduction test the acceptance criteria
    name (most beads name the exact wrong-behaviour case). Run it, watch it fail
