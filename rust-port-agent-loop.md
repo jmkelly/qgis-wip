@@ -4,7 +4,7 @@ Model-agnostic. Any agent with shell + `bd` can run this.
 
 ## 1. Contract (do not renegotiate mid-loop)
 
-- Read `GLOSSARY.md` and `docs/adr/0001-0006` before any work.
+- Read `GLOSSARY.md` and `0001-0006` before any work.
 - Rules: pure Rust, no FFI to GDAL/GEOS/PROJ/Qt; headless first, iced GUI last;
   PyO3 preserves `qgis.core`/`qgis.gui`; close beads on code-complete, parity is verified in E9.
 - Cartographic projections come from the `proj4rs` crate, never hand-written — ADR 0006. WKT2,
@@ -108,7 +108,7 @@ Copy-paste per bead, fill in `<id>`:
 ```
 You are the implementer for QGIS Rust port bead <id>.
 
-1. Run: bd show <id> and read GLOSSARY.md + docs/adr/0001-0006.
+1. Run: bd show <id> and read GLOSSARY.md + 0001-0006.
 2. Claim: bd update <id> --claim
 3. Worktree & target dir (set up by orchestrator, verify):
    - You are in a Paseo worktree workspace (isolation=worktree).

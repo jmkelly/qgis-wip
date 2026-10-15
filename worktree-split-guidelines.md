@@ -273,7 +273,7 @@ composable `./verify` tool that the project actually uses. **Proposed fix:**
 reference `./verify test` and `./verify clippy` in §6 and §13.
 
 **B5. §2 API locking doesn't mention ADRs or GLOSSARY.md.** The agent loop
-requires reading GLOSSARY.md + docs/adr/0001-0006 before any work, and new
+requires reading GLOSSARY.md + 0001-0006 before any work, and new
 third-party crates need an ADR. **Proposed fix:** add a note in §2 that
 interface locking must be ADR-recorded if it introduces a new dependency.
 

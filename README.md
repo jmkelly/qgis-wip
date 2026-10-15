@@ -31,7 +31,7 @@ see ADR-0006.
 - **Cartographic projections are not rebuilt from scratch.** `qgis-crs` uses the pure-Rust crate
   [`proj4rs`](https://crates.io/crates/proj4rs) for `+proj` transformation math and
   [`crs-definitions`](https://crates.io/crates/crs-definitions) for the embedded EPSG dataset, per
-  [ADR 0006](../docs/adr/0006-proj4rs-projections.md). The gaps around them — WKT2:2019 parse/emit,
+  [ADR 0006](0006-proj4rs-projections.md). The gaps around them — WKT2:2019 parse/emit,
   datum ensembles, GSB/GTX grids, `projinfo`/cct parity — are ours to build. New third-party crate
   dependencies must be pure Rust, GPL-compatible, and pinned exact in `Cargo.toml`.
 - Each crate must run `cargo test` in under 5 minutes.
@@ -55,5 +55,5 @@ can be run locally with a single script:
 ./ci.sh --geiger  # also run cargo-geiger
 ```
 
-See [docs/rust-port-agent-loop.md](../docs/rust-port-agent-loop.md) for the
+See [rust-port-agent-loop.md](rust-port-agent-loop.md) for the
 full unattended agent loop runbook.
