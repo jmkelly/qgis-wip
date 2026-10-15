@@ -12,7 +12,7 @@ use iced::{Element, Length, Task};
 
 use qgis_core::{Feature, Layer, LayerRegistry, Value};
 use qgis_crs::{Camera, SrsId};
-use qgis_providers::geojson;
+use qgis_providers::geojson::GeoJsonProvider;
 use qgis_providers::gpkg::{feature_tables, GpkgProvider};
 use qgis_providers::FeatureProvider;
 use qgis_style::{parse_qml_file, StyleModel};
@@ -467,15 +467,24 @@ fn load_layer_from_path(state: &mut AppState, path: &str) {
     }
 }
 
-/// Loads a GeoJSON file into a [`Layer`].
-pub(crate) fn load_geojson_as_layer(path: &str) -> Result<Layer, String> {
-    let data = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let fc = geojson::FeatureCollection::from_json(&data)?;
-    let name = path
-        .rsplit('/')
-        .next()
+/// Loads a GeoJSON file into a [`Layer`] through the unified provider
+/// (E10.4), mirroring the GeoPackage leg.
+///
+/// The layer takes the file's base name without extension (matching QGIS and
+/// the shapefile loader), falling back to the full file name when no stem
+/// can be derived.
+fn load_geojson_as_layer(path: &str) -> Result<Layer, String> {
+    let fc = GeoJsonProvider.read_to_features(path)?;
+    let name = std::path::Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
         .map(|s| s.to_string())
-        .unwrap_or_else(|| "layer".into());
+        .unwrap_or_else(|| {
+            path.rsplit('/')
+                .next()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "layer".into())
+        });
     let mut layer = Layer::new(name, SrsId::from_epsg(4326));
     for f in fc.features {
         let geometry = f.geometry;
@@ -1341,6 +1350,63 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&gpkg_path_buf);
+    }
+
+    /// Bead qgis-0qz acceptance (GeoJSON leg): open a .geojson through the
+    /// file-open dialog path and verify it loads into the registry, fits the
+    /// viewport, and produces canvas geometry — same message pipeline and
+    /// render check as the gpkg acceptance test.
+    #[test]
+    fn acceptance_file_open_geojson_loads_and_renders() {
+        use qgis_style::symbols::CanvasGeometry;
+
+        use crate::layer_renderer::render_layer;
+        use crate::map_program::default_style_for_layer;
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let geojson_path = root
+            .join("../provider-samples/points.geojson")
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let mut state = AppState::default();
+        let _ = update(&mut state, Message::OpenFileDialog);
+        let _ = update(
+            &mut state,
+            Message::FileDialogInputChanged(geojson_path.clone()),
+        );
+        let _ = update(&mut state, Message::FileDialogConfirm);
+
+        assert!(
+            state.dialog.is_none(),
+            "valid .geojson should not produce an error dialog, got {:?}",
+            state.dialog
+        );
+        assert_eq!(state.registry.len(), 1, "geojson should load as one layer");
+        let layer = state.registry.layer_at(0).unwrap().clone();
+        assert_eq!(layer.name, "points");
+        assert!(
+            !layer.features.is_empty(),
+            "layer should have features from the geojson file"
+        );
+        assert!(layer.extent().is_some(), "layer extent should be computed");
+        assert!(
+            (state.camera.zoom - 3.0).abs() > f64::EPSILON,
+            "camera should fit the loaded geojson extent"
+        );
+        assert!(state.status.contains("Loaded"));
+
+        let viewport = (1024.0, 768.0);
+        let camera = state.camera.with_viewport(viewport);
+        let style = default_style_for_layer(&layer);
+        let geoms = render_layer(&layer, &style, &camera, viewport);
+        assert!(
+            geoms
+                .iter()
+                .any(|g| matches!(g, CanvasGeometry::Fill { .. } | CanvasGeometry::Stroke { .. })),
+            "geojson points should produce canvas geometry"
+        );
     }
 
     /// Invalid file (missing on disk) must surface the error dialog and not
