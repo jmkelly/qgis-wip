@@ -23,12 +23,15 @@ recoverable case here is a dead worker, not a fast one.
 
 Liveness is matched two ways, both of which the runbook already produces:
 
-  * the bead's branch, `bd/<id>`, resolved through `paseo workspace ls` to its
-    worktree, compared against the cwd of every live agent. A live agent's cwd
-    is that worktree, so the bead is held. The fallback when the workspace is
-    not listed compares the worktree directory slug `bd-<id-with-dots-as-dashes>`
-    as an exact path segment, so `bd-spatialengine-u2x-2` never matches a bead
-    id of `SpatialEngine-u2x.21`.
+  * the bead's worktree, resolved through `paseo workspace ls` to the cwd whose
+    directory slug is this bead's, compared against the cwd of every live
+    agent. A live agent's cwd is that worktree, so the bead is held. The
+    fallback when the workspace is not listed matches the worktree directory
+    slug `bd-<id-with-dots-as-dashes>` as the final path segment, allowing the
+    numeric suffix paseo appends when the name is already taken
+    (`bd-qgis-5gj-1`). Only digits may follow the slug, so
+    `bd-spatialengine-u2x-2` never matches a bead id of `SpatialEngine-u2x.21`,
+    and `bd-qgis-5gj-extra` never matches `qgis-5gj`.
   * the agent id the coordinator recorded in the bead's notes (`agent <id>`),
     which narrows the same worktree test to the agent that claimed this bead
     rather than to any agent id the notes happen to carry.
@@ -45,6 +48,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -142,7 +146,7 @@ def branch_name(bead_id):
 
 def _path_of(value):
     """Normalise a path or a `~`-prefixed one to comparable absolute-ish form."""
-    return str(value or "").rstrip("/")
+    return os.path.expanduser(str(value or "")).rstrip("/")
 
 
 def _last_segment(value):
@@ -152,11 +156,39 @@ def _last_segment(value):
     return PurePosixPath(text).name
 
 
+def _segment_matches_slug(segment, slug):
+    """Whether a worktree directory name is this bead's, suffix included.
+
+    paseo disambiguates a taken worktree name with a numeric suffix, so the
+    live worker for `qgis-5gj` sits in `bd-qgis-5gj-1` and an exact segment
+    match misses it. A slug followed by `-<digits>` is the same bead; any
+    other suffix (`bd-qgis-5gj-extra`) is a different worktree.
+    """
+    if not segment or not slug:
+        return False
+    if segment == slug:
+        return True
+    prefix = slug + "-"
+    return segment.startswith(prefix) and segment[len(prefix):].isdigit()
+
+
 def branch_worktree(bead_id, workspaces):
-    """The worktree `paseo` has for this bead's branch, if it knows one."""
+    """The worktree `paseo` has for this bead, if it knows one.
+
+    paseo names a worktree workspace with a human title (e.g. "qgis-5gj
+    headless driver"), not the branch, so matching `name` against `bd/<id>`
+    alone never fires. Match the workspace directory slug instead, which is
+    what the worktree is actually named on disk.
+    """
+    branch = branch_name(bead_id)
+    slug = worktree_slug(bead_id)
     for workspace in workspaces:
-        if _path_of(workspace.get("name")) == branch_name(bead_id):
+        if _path_of(workspace.get("name")) == branch:
             return _path_of(workspace.get("cwd"))
+    for workspace in workspaces:
+        cwd = _path_of(workspace.get("cwd"))
+        if _segment_matches_slug(_last_segment(cwd), slug):
+            return cwd
     return None
 
 
@@ -168,8 +200,9 @@ def _agent_covers_cwd(agent, cwd, slug):
     if cwd and agent_cwd == cwd:
         return True
     # Fallback for a worktree paseo no longer lists: compare the final path
-    # segment exactly, so `...-u2x-2` is never read as `...-u2x-21`.
-    return bool(slug) and _last_segment(agent_cwd) == slug
+    # segment to the slug, allowing the numeric disambiguation suffix. Only
+    # digits may follow the slug, so `...-u2x-2` is never read as `...-u2x-21`.
+    return _segment_matches_slug(_last_segment(agent_cwd), slug)
 
 
 def _notes_agent_ids(bead):
