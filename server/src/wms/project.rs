@@ -186,7 +186,14 @@ fn parse_map_layer(element: &XmlElement) -> ProjectLayer {
         datasource: get_child_text(element, "datasource").unwrap_or_default(),
         provider: get_child_text(element, "provider").unwrap_or_default(),
         layer_type: get_child_text(element, "type").unwrap_or_default(),
-        geometry_type: element.attribute("geometry").map(|s| s.to_string()),
+        // QGIS writes geometry="Unknown" for a layer with no features and
+        // geometry="NoGeometry" for an attribute-only layer; both mean "no
+        // geometry type" and must parse back as None. Mirrors the gui reader
+        // (gui/src/project.rs read_qgs).
+        geometry_type: element
+            .attribute("geometry")
+            .map(|s| s.to_string())
+            .filter(|g| g != "Unknown" && g != "NoGeometry"),
         visible: true,
         crs: get_layer_crs(element),
     }
@@ -571,6 +578,36 @@ mod tests {
         assert_eq!(project.layers[0].geometry_type.as_deref(), Some("Point"));
         assert!(project.layers[0].visible);
         assert_eq!(project.layers[0].crs.as_deref(), Some("EPSG:4326"));
+    }
+
+    #[test]
+    fn parse_layer_without_geometry_is_none() {
+        // QGIS writes geometry="Unknown" for a layer with no features and
+        // geometry="NoGeometry" for an attribute-only layer. Both mean "no
+        // geometry type" and must read back as None, matching the gui reader
+        // (gui/src/project.rs read_qgs).
+        let xml = r#"<qgis projectname="Test" version="3.28.0">
+  <projectlayers>
+    <maplayer id="layer1" geometry="Unknown" type="vector">
+      <id>layer1</id>
+      <layername>Empty</layername>
+      <datasource>./empty.geojson</datasource>
+      <provider>geojson</provider>
+      <type>vector</type>
+    </maplayer>
+    <maplayer id="layer2" geometry="NoGeometry" type="vector">
+      <id>layer2</id>
+      <layername>AttributesOnly</layername>
+      <datasource>./attrs.csv</datasource>
+      <provider>delimitedtext</provider>
+      <type>vector</type>
+    </maplayer>
+  </projectlayers>
+</qgis>"#;
+        let project = parse_project(xml).unwrap();
+        assert_eq!(project.layers.len(), 2);
+        assert_eq!(project.layers[0].geometry_type, None);
+        assert_eq!(project.layers[1].geometry_type, None);
     }
 
     #[test]
