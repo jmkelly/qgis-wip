@@ -13,7 +13,7 @@ use iced::{Element, Length, Task};
 use qgis_core::{Feature, Layer, LayerRegistry, Value};
 use qgis_crs::{Camera, SrsId};
 use qgis_providers::geojson;
-use qgis_providers::gpkg::GpkgProvider;
+use qgis_providers::gpkg::{feature_tables, GpkgProvider};
 use qgis_providers::FeatureProvider;
 use qgis_style::{parse_qml_file, StyleModel};
 
@@ -476,6 +476,36 @@ pub(crate) fn load_geojson_as_layer(path: &str) -> Result<Layer, String> {
         .next()
         .map(|s| s.to_string())
         .unwrap_or_else(|| "layer".into());
+    let mut layer = Layer::new(name, SrsId::from_epsg(4326));
+    for f in fc.features {
+        let geometry = f.geometry;
+        let properties = f.properties;
+        let mut feature = Feature::new(layer.feature_count() as i64, geometry);
+        for (k, v) in properties {
+            feature.set_attribute(k, json_to_value(&v));
+        }
+        layer.features.push(feature);
+    }
+    Ok(layer)
+}
+
+/// Loads a GeoPackage file into a [`Layer`] via the GPKG provider.
+///
+/// The layer is named after the package's first feature table (matching
+/// QGIS, where a GeoPackage layer takes its table name), falling back to
+/// the file name when the package lists no feature tables.
+fn load_gpkg_as_layer(path: &str) -> Result<Layer, String> {
+    let name = feature_tables(path)?
+        .first()
+        .cloned()
+        .unwrap_or_else(|| {
+            path.rsplit('/')
+                .next()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "layer".into())
+        });
+    let provider = GpkgProvider;
+    let fc = provider.read_to_features(path)?;
     let mut layer = Layer::new(name, SrsId::from_epsg(4326));
     for f in fc.features {
         let geometry = f.geometry;
@@ -1277,9 +1307,9 @@ mod tests {
         let (gpkg_path_buf, gpkg_path) = make_test_gpkg("qgis-0qz-acceptance");
 
         let mut state = AppState::default();
-        update(&mut state, Message::OpenFileDialog);
-        update(&mut state, Message::FileDialogInputChanged(gpkg_path.clone()));
-        update(&mut state, Message::FileDialogConfirm);
+        let _ = update(&mut state, Message::OpenFileDialog);
+        let _ = update(&mut state, Message::FileDialogInputChanged(gpkg_path.clone()));
+        let _ = update(&mut state, Message::FileDialogConfirm);
 
         assert!(
             state.dialog.is_none(),
@@ -1318,12 +1348,12 @@ mod tests {
     #[test]
     fn file_open_missing_file_shows_error_dialog() {
         let mut state = AppState::default();
-        update(&mut state, Message::OpenFileDialog);
-        update(
+        let _ = update(&mut state, Message::OpenFileDialog);
+        let _ = update(
             &mut state,
             Message::FileDialogInputChanged("/nonexistent/dir/file.shp".into()),
         );
-        update(&mut state, Message::FileDialogConfirm);
+        let _ = update(&mut state, Message::FileDialogConfirm);
         assert!(
             matches!(state.dialog, Some(Dialog::Error { .. })),
             "missing file should produce an error dialog, got {:?}",
@@ -1336,9 +1366,9 @@ mod tests {
     #[test]
     fn file_open_unsupported_extension_shows_error_dialog() {
         let mut state = AppState::default();
-        update(&mut state, Message::OpenFileDialog);
-        update(&mut state, Message::FileDialogInputChanged("data.csv".into()));
-        update(&mut state, Message::FileDialogConfirm);
+        let _ = update(&mut state, Message::OpenFileDialog);
+        let _ = update(&mut state, Message::FileDialogInputChanged("data.csv".into()));
+        let _ = update(&mut state, Message::FileDialogConfirm);
         assert!(
             matches!(state.dialog, Some(Dialog::Error { .. })),
             "unsupported extension should produce an error dialog, got {:?}",
