@@ -7,6 +7,7 @@
 
 use crate::{CheckFn, Report, Runner};
 
+pub mod layerpanel;
 pub mod oracle;
 pub mod project;
 pub mod providers;
@@ -14,11 +15,19 @@ pub mod selfcheck;
 pub mod styles;
 
 /// Names of every registered suite, for `--list`.
-pub const SUITES: &[&str] = &["oracle", "project", "selfcheck", "providers", "styles"];
+pub const SUITES: &[&str] = &[
+    "layerpanel",
+    "oracle",
+    "project",
+    "selfcheck",
+    "providers",
+    "styles",
+];
 
 /// Run a named suite, or `None` if no such suite is registered.
 pub fn run(name: &str) -> Option<Report> {
     let checks: Vec<(String, CheckFn)> = match name {
+        "layerpanel" => layerpanel::checks(),
         "oracle" => oracle::checks(),
         "project" => project::checks(),
         "selfcheck" => selfcheck::checks(),
