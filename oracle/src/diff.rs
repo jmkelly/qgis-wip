@@ -363,6 +363,46 @@ mod tests {
     }
 
     #[test]
+    fn lcs_budget_exact_boundary_uses_lcs() {
+        // 3x3 inputs: the DP table is exactly 9 cells. At max_cells=9 the
+        // budget check (cells > max_cells) is false, so the LCS path runs
+        // and the matching lines stay as context.
+        let old = "a\nb\nc\n";
+        let new = "a\nX\nc\n";
+        let diff = Diff::between_limited(old, new, 9);
+        assert!(!diff.is_empty());
+        let rendered = diff.render("old", "new");
+        assert!(rendered.contains(" a\n"), "rendered:\n{rendered}");
+        assert!(rendered.contains("-b\n"), "rendered:\n{rendered}");
+        assert!(rendered.contains("+X\n"), "rendered:\n{rendered}");
+        assert!(rendered.contains(" c\n"), "rendered:\n{rendered}");
+        assert!(!rendered.contains("-a\n"), "rendered:\n{rendered}");
+        assert!(!rendered.contains("+a\n"), "rendered:\n{rendered}");
+        assert!(!rendered.contains("-c\n"), "rendered:\n{rendered}");
+        assert!(!rendered.contains("+c\n"), "rendered:\n{rendered}");
+    }
+
+    #[test]
+    fn lcs_budget_exceeded_falls_back_to_replacement() {
+        // 3x3 inputs with max_cells=8: the DP table (9 cells) exceeds the
+        // budget, so the whole-document replacement path runs — every old
+        // line is removed and every new line added, including matches.
+        let old = "a\nb\nc\n";
+        let new = "a\nX\nc\n";
+        let diff = Diff::between_limited(old, new, 8);
+        assert!(!diff.is_empty());
+        let rendered = diff.render("old", "new");
+        assert!(rendered.contains("-a\n"), "rendered:\n{rendered}");
+        assert!(rendered.contains("-b\n"), "rendered:\n{rendered}");
+        assert!(rendered.contains("-c\n"), "rendered:\n{rendered}");
+        assert!(rendered.contains("+a\n"), "rendered:\n{rendered}");
+        assert!(rendered.contains("+X\n"), "rendered:\n{rendered}");
+        assert!(rendered.contains("+c\n"), "rendered:\n{rendered}");
+        assert!(!rendered.contains(" a\n"), "rendered:\n{rendered}");
+        assert!(!rendered.contains(" c\n"), "rendered:\n{rendered}");
+    }
+
+    #[test]
     fn render_labels_appear_in_header() {
         let diff = Diff::between("a\n", "b\n");
         let rendered = diff.render("goldens/trivial.expected", "actual");
