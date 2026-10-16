@@ -244,6 +244,12 @@ impl RasterBlock {
     /// Returns the value at a geographic coordinate using bilinear
     /// interpolation. Returns `None` if the coordinate falls outside
     /// the raster extent.
+    ///
+    /// Pixel `i` is a point sample at continuous coordinate `i` (the same
+    /// corner convention as [`RasterBlock::sample_nearest`]). Interpolation
+    /// happens between the two surrounding point samples; coordinates past
+    /// the outermost samples clamp to the edge of the interpolation domain,
+    /// so every point inside the raster extent yields a value.
     pub fn sample_bilinear(
         &self,
         x: f64,
@@ -252,22 +258,29 @@ impl RasterBlock {
     ) -> Option<f64> {
         let fx = (x - geotransform[0]) / geotransform[1];
         let fy = (y - geotransform[3]) / geotransform[5];
-        let x0 = fx.floor();
-        let y0 = fy.floor();
-        let x1 = x0 + 1.0;
-        let y1 = y0 + 1.0;
 
-        if x0 < 0.0 || y0 < 0.0 || x1 >= self.width as f64 || y1 >= self.height as f64 {
+        if fx < 0.0 || fx >= self.width as f64 || fy < 0.0 || fy >= self.height as f64 {
             return None;
         }
 
-        let v00 = self.value(x0 as usize, y0 as usize);
-        let v10 = self.value(x1 as usize, y0 as usize);
-        let v01 = self.value(x0 as usize, y1 as usize);
-        let v11 = self.value(x1 as usize, y1 as usize);
+        // Clamp into the interpolation domain: the outermost point samples
+        // bound it, so coordinates in the outermost pixel's outer half
+        // clamp to the domain edge instead of returning None.
+        let fx = fx.clamp(0.0, (self.width - 1) as f64);
+        let fy = fy.clamp(0.0, (self.height - 1) as f64);
 
-        let tx = fx - x0;
-        let ty = fy - y0;
+        let x0 = (fx.floor() as usize).min(self.width.saturating_sub(2));
+        let y0 = (fy.floor() as usize).min(self.height.saturating_sub(2));
+        let x1 = (x0 + 1).min(self.width - 1);
+        let y1 = (y0 + 1).min(self.height - 1);
+
+        let v00 = self.value(x0, y0);
+        let v10 = self.value(x1, y0);
+        let v01 = self.value(x0, y1);
+        let v11 = self.value(x1, y1);
+
+        let tx = fx - x0 as f64;
+        let ty = fy - y0 as f64;
 
         let top = v00 * (1.0 - tx) + v10 * tx;
         let bottom = v01 * (1.0 - tx) + v11 * tx;
@@ -508,15 +521,35 @@ mod tests {
         let data = vec![0.0, 10.0, 20.0, 30.0];
         let block = RasterBlock::from_data(2, 2, RasterDataType::Float64, data);
 
-        // Center of pixel (0, 0) at (0.5, -0.5): bilinear gives the
-        // average of all 4 surrounding pixels = (0+10+20+30)/4 = 15.0
+        // Continuous coords: fx = (x - gt0) / gt1, fy = (y - gt3) / gt5; pixel
+        // i is a point sample at coordinate i. At (0.5, -0.5) the sample
+        // sits at the shared corner of all four pixels, so bilinear weights
+        // them equally: (0+10+20+30)/4 = 15.0.
         assert_eq!(block.sample_bilinear(0.5, -0.5, &geotransform), Some(15.0));
-        // Center of pixel (1, 0) at (1.5, -0.5): same average
-        assert_eq!(block.sample_bilinear(1.5, -0.5, &geotransform), Some(15.0));
-        // Midpoint between pixels (0,0) and (1,0) at (1.0, -0.5):
-        // average of top two = (0+10)/2 = 5.0
-        let v = block.sample_bilinear(1.0, -0.5, &geotransform).unwrap();
-        assert!((v - 5.0).abs() < 1e-10);
+        // (1.5, -0.5) is inside the last pixel's cell but past the last
+        // sample center (fx = width - 1 = 1.0); the coordinate clamps to
+        // the domain edge, giving the last column's vertical midpoint:
+        // (10+30)/2 = 20.0. (Previously expected 15.0 — unattainable: see
+        // the note below.)
+        assert_eq!(block.sample_bilinear(1.5, -0.5, &geotransform), Some(20.0));
+        // (1.0, -0.5) lies exactly on sample 1's coordinate (the shared
+        // edge of pixels 0 and 1); the window clamps to the last two
+        // samples with full weight on column 1: (10+30)/2 = 20.0.
+        // (Previously expected 5.0 — unattainable: at fy = 0.5 the first
+        // assertion forces ty = 0.5, and then this point's value is
+        // 10 + 10*tx >= 10 for every tx. The old 5.0 came from mixing a
+        // center-space y convention into an otherwise corner-space test.)
+        assert_eq!(block.sample_bilinear(1.0, -0.5, &geotransform), Some(20.0));
+        // Left extent edge: fx = 0 clamps to the first sample; the value
+        // is the first column's vertical midpoint: (0+20)/2 = 10.0.
+        assert_eq!(block.sample_bilinear(0.0, -0.5, &geotransform), Some(10.0));
+        // Bottom extent edge: fy = 1.5 clamps to the last sample row;
+        // the value is the last row's horizontal midpoint: (20+30)/2 = 25.0.
+        assert_eq!(block.sample_bilinear(0.5, -1.5, &geotransform), Some(25.0));
+        // Outside the extent on any axis: None.
+        assert_eq!(block.sample_bilinear(-0.5, -0.5, &geotransform), None);
+        assert_eq!(block.sample_bilinear(0.5, 0.5, &geotransform), None);
+        assert_eq!(block.sample_bilinear(2.5, -0.5, &geotransform), None);
     }
 
     #[test]
