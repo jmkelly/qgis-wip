@@ -128,7 +128,7 @@ impl PointCloudBlock {
     pub fn vegetation_count(&self) -> usize {
         self.points
             .iter()
-            .filter(|p| matches!(p.classification, 3 | 4 | 5))
+            .filter(|p| matches!(p.classification, 3..=5))
             .count()
     }
 

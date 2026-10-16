@@ -142,7 +142,7 @@ impl LasPoint {
 
     /// Returns true if this is a vegetation classification (class 3, 4, 5).
     pub fn is_vegetation(&self) -> bool {
-        matches!(self.classification, 3 | 4 | 5)
+        matches!(self.classification, 3..=5)
     }
 
     /// Returns true if this is a building classification (class 6).
@@ -199,9 +199,9 @@ mod tests {
         p.green = 32768;
         p.blue = 32768;
         let (r, g, b) = p.rgb();
-        assert!(r >= 127 && r <= 128);
-        assert!(g >= 127 && g <= 128);
-        assert!(b >= 127 && b <= 128);
+        assert!((127..=128).contains(&r));
+        assert!((127..=128).contains(&g));
+        assert!((127..=128).contains(&b));
     }
 
     #[test]
