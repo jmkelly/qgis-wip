@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # CI gate script for the QGIS Rust port.
 # Runs all gates locally or in CI. Exits non-zero on first failure.
+# Hard gates: tests, clippy, bench compile, oracle, headless.
+# Optional gates: geiger (--geiger), mutants (--mutants).
 #
 # Usage:
 #   ./ci.sh [--help] [-p <crate>] [--offline] [--nextest] [--geiger]
@@ -29,7 +31,9 @@ GEIGER=0
 MUTANTS=0
 
 usage() {
-    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+    # Print the comment header (every `#` line after the shebang), stopping at
+    # the first real command so `set -euo pipefail` never leaks into `--help`.
+    awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"
 }
 
 while [ $# -gt 0 ]; do
@@ -129,17 +133,17 @@ echo "Test command: $TEST_LABEL"
 echo ""
 
 # --- Gate 1: tests ---
-echo "--- [1/5] ${TEST_LABEL} ${PKG_FLAGS[*]} ---"
+echo "--- [1/6] ${TEST_LABEL} ${PKG_FLAGS[*]} ---"
 "${TEST_CMD[@]}" "${PKG_FLAGS[@]}" ${OFFLINE_FLAG[@]+"${OFFLINE_FLAG[@]}"}
 echo ""
 
 # --- Gate 2: clippy ---
-echo "--- [2/5] cargo clippy ${PKG_FLAGS[*]} --all-targets -- -D warnings ---"
+echo "--- [2/6] cargo clippy ${PKG_FLAGS[*]} --all-targets -- -D warnings ---"
 cargo clippy "${PKG_FLAGS[@]}" --all-targets -- -D warnings ${OFFLINE_FLAG[@]+"${OFFLINE_FLAG[@]}"}
 echo ""
 
 # --- Gate 3: bench compile ---
-echo "--- [3/5] bench compile ---"
+echo "--- [3/6] bench compile ---"
 if [ -n "$CRATE" ]; then
     # Check if the crate has benches
     CRATE_DIR="$CRATE"
@@ -158,7 +162,7 @@ echo ""
 # --- Gate 4: oracle ---
 # Rust-side smoke verify always runs; the live C++ diff runs only when
 # QGIS_CPP_BINARY names an executable (bead qgis-uic.7).
-echo "--- [4/5] oracle ---"
+echo "--- [4/6] oracle ---"
 if [ -n "$CRATE" ] && [ "$CRATE" != "qgis-oracle" ]; then
     echo "crate '$CRATE' has no oracle integration; skipping oracle"
 else
@@ -186,19 +190,31 @@ echo ""
 
 # --- Gate 5: cargo-geiger (optional) ---
 if [ "$GEIGER" -eq 1 ]; then
-    echo "--- [5/5] cargo geiger --workspace (informational) ---"
+    echo "--- [5/6] cargo geiger --workspace (informational) ---"
     if ! command -v cargo-geiger &>/dev/null; then
         echo "cargo-geiger not installed; skipping (run: cargo install cargo-geiger)"
     else
         cargo geiger --workspace || true
     fi
 else
-    echo "--- [5/5] cargo-geiger skipped (pass --geiger to enable) ---"
+    echo "--- [5/6] cargo-geiger skipped (pass --geiger to enable) ---"
 fi
 
-# --- Gate 6: cargo-mutants (optional, informational) ---
+# --- Gate 6: headless acceptance scenarios ---
+# Dispatches the headless GUI scenarios (bead qgis-ggs) through the real
+# app::update path with no iced runtime, window, or GPU, so the gate needs no
+# display (no xvfb). Scoped runs skip it unless the scope is qgis-gui.
+echo "--- [6/6] headless ---"
+if [ -z "$CRATE" ] || [ "$CRATE" = "qgis-gui" ] || [ "$CRATE" = "gui" ]; then
+    ./verify headless ${OFFLINE_FLAG[@]+"${OFFLINE_FLAG[@]}"}
+else
+    echo "crate '$CRATE' has no headless scenarios; skipping headless"
+fi
+echo ""
+
+# --- Extra: cargo-mutants (optional, informational) ---
 if [ "$MUTANTS" -eq 1 ]; then
-    echo "--- [6/6] cargo mutants (daily tier, informational) ---"
+    echo "--- [extra] cargo mutants (daily tier, informational) ---"
     if ! command -v cargo-mutants &>/dev/null; then
         echo "cargo-mutants not installed; skipping (run: cargo install --locked cargo-mutants)"
     else

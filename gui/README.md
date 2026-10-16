@@ -40,3 +40,22 @@ center.
 
 The crate is `#![forbid(unsafe_code)]`; the only `unsafe` in the workspace is
 the pyo3-ffi boundary in `qgis-pyo3` (ADR-0001/0003).
+
+## Headless acceptance
+
+The headless driver ([`src/headless.rs`](src/headless.rs)) wraps `AppState` and
+feeds `Message` values through the real `app::update` path with no iced
+runtime, window, or GPU, so GUI workflows can be scripted and asserted without
+a display.
+
+`examples/headless_acceptance.rs` ports the manual acceptance flow (load a
+shapefile, style it, save/reopen a `.qgs`, drive the viewport) into nine
+scenarios; `examples/headless_scenario.rs` demonstrates the fluent `Scenario`
+builder.
+
+```bash
+./verify headless   # build examples, run acceptance scenarios, run harness tests
+```
+
+This is the `headless` job in CI (`rust-port.yml`) and the sixth gate in
+`ci.sh`; it needs no display (no xvfb).
