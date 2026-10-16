@@ -73,3 +73,15 @@ jobs:
         run: cargo install cargo-geiger --locked
       - name: Run cargo-geiger
         run: cargo geiger --workspace
+
+  headless:
+    name: headless acceptance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.99.0"
+      - uses: Swatinem/rust-cache@v2
+      - name: Run headless acceptance scenarios
+        run: ./verify headless

@@ -47,13 +47,20 @@ cargo geiger --workspace  # verify no FFI
 
 ## CI
 
-All quality gates are automated in CI (`rust-port.yml`) and
-can be run locally with a single script:
+All quality gates are automated in CI (`rust-port.yml`) as six parallel jobs:
+`test`, `clippy`, `bench-compile`, `oracle`, `geiger`, and `headless`. They can
+be run locally with a single script:
 
 ```bash
-./ci.sh           # run all gates (test, clippy, bench compile, oracle)
-./ci.sh --geiger  # also run cargo-geiger
+./ci.sh              # run all gates (test, clippy, bench compile, oracle, headless)
+./ci.sh --geiger     # also run cargo-geiger
+./verify headless    # just the headless GUI acceptance scenarios + harness tests
 ```
+
+The `headless` gate builds the qgis-gui examples, runs the headless acceptance
+scenarios, and runs the headless harness unit tests. It drives the real
+`app::update` path with no iced runtime, window, or GPU, so it needs no display
+(no xvfb) and finishes in milliseconds.
 
 See [rust-port-agent-loop.md](rust-port-agent-loop.md) for the
 full unattended agent loop runbook.

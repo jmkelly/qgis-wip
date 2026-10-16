@@ -36,6 +36,7 @@ ad-hoc in a prompt.
 ./verify diff <fixture> --cpp      # rust vs C++ (needs QGIS_CPP_BINARY)
 ./verify bench                     # compile benchmarks
 ./verify bench --run               # run benchmarks
+./verify headless                  # headless GUI acceptance scenarios + harness tests
 ./verify mutants                    # mutation-test today's daily-tier crate (cargo-mutants)
 ./verify mutants --crate geometry   # mutation-test one crate
 ./verify mutants --tier weekly      # mutation-test the big three (geometry, expression, crs)
