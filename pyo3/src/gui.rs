@@ -372,14 +372,8 @@ pub fn gui(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 /// Python wrapper for [`MapCanvas`].
 #[pyclass(skip_from_py_object, module = "qgis.gui", name = "QgsMapCanvas")]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PyQgsMapCanvas(MapCanvas);
-
-impl Default for PyQgsMapCanvas {
-    fn default() -> Self {
-        Self(MapCanvas::default())
-    }
-}
 
 #[pymethods]
 impl PyQgsMapCanvas {

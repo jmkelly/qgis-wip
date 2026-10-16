@@ -880,7 +880,7 @@ mod tests {
         assert_eq!(s.crs(), "EPSG:4326");
         assert_eq!(s.extent().as_tuple(), (0.0, 0.0, 100.0, 100.0));
         assert_eq!(s.output_dpi(), DEFAULT_OUTPUT_DPI);
-        assert!(s.shadow_enabled() == false);
+        assert!(!s.shadow_enabled());
         assert!(s.render_direction_aware_enabled());
         assert!(!s.animation_enabled());
         assert!(s.terrain_generator().is_none());
