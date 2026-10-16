@@ -176,7 +176,7 @@ implementer runs before reporting done. This ensures that code merged to
 | Lint | `cargo clippy --workspace --all-targets -- -D warnings` | Enforce zero warnings |
 | Bench compile | `cargo bench -p qgis-bench --no-run` | Verify criterion benches compile |
 | Oracle smoke | `cargo run -p qgis-oracle -- oracle/fixtures/trivial.txt` | Verify oracle harness works |
-| Geiger | `cargo geiger --workspace` | Informational: verify no unsafe/FFI |
+| Geiger | `cargo geiger --manifest-path <pkg>/Cargo.toml` per workspace package | Informational: verify no unsafe/FFI; `--workspace` rejects the virtual root manifest (bead qgis-nw5) |
 
 ### Local CI script
 
