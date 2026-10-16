@@ -25,6 +25,8 @@ pub mod fcgi_listener;
 pub mod http_server;
 pub mod landing;
 pub mod query;
+pub mod rate_limit;
+pub mod response_cache;
 pub mod service;
 pub mod wcs;
 pub mod wms;

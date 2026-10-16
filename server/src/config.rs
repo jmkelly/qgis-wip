@@ -18,6 +18,16 @@ pub struct ServerConfig {
     pub trusted_headers: Vec<String>,
     /// Valid API keys for service authentication.
     pub api_keys: Vec<String>,
+    /// Valid HTTP Basic username/password pairs.
+    pub basic_credentials: Vec<(String, String)>,
+    /// Optional HMAC secret for verifying HS256 JWTs.
+    pub jwt_secret: Option<String>,
+    /// Maximum sustained HTTP requests per client per second; zero disables throttling.
+    pub rate_limit_requests_per_second: u32,
+    /// TTL for cached HTTP responses.
+    pub response_cache_ttl: Duration,
+    /// Maximum number of cached HTTP responses.
+    pub response_cache_capacity: usize,
     /// TTL for cached authenticated credentials.
     pub auth_cache_ttl: Duration,
     /// Maximum number of cached authenticated credentials.
@@ -35,6 +45,11 @@ impl Default for ServerConfig {
             port: 8080,
             trusted_headers: Vec::new(),
             api_keys: Vec::new(),
+            basic_credentials: Vec::new(),
+            jwt_secret: None,
+            rate_limit_requests_per_second: 0,
+            response_cache_ttl: Duration::from_secs(60),
+            response_cache_capacity: 256,
             auth_cache_ttl: DEFAULT_AUTH_CACHE_TTL,
             auth_cache_capacity: DEFAULT_AUTH_CACHE_CAPACITY,
             config_cache_ttl: DEFAULT_CONFIG_CACHE_TTL,
@@ -67,6 +82,31 @@ impl ServerConfig {
     /// Sets the valid API keys (consuming builder).
     pub fn with_api_keys(mut self, keys: Vec<String>) -> Self {
         self.api_keys = keys;
+        self
+    }
+
+    /// Sets valid HTTP Basic credentials.
+    pub fn with_basic_credentials(mut self, credentials: Vec<(String, String)>) -> Self {
+        self.basic_credentials = credentials;
+        self
+    }
+
+    /// Sets the HS256 JWT signing secret.
+    pub fn with_jwt_secret(mut self, secret: impl Into<String>) -> Self {
+        self.jwt_secret = Some(secret.into());
+        self
+    }
+
+    /// Sets the per-client HTTP request rate; zero disables throttling.
+    pub fn with_rate_limit(mut self, requests_per_second: u32) -> Self {
+        self.rate_limit_requests_per_second = requests_per_second;
+        self
+    }
+
+    /// Sets the HTTP response-cache TTL and capacity.
+    pub fn with_response_cache(mut self, ttl: Duration, capacity: usize) -> Self {
+        self.response_cache_ttl = ttl;
+        self.response_cache_capacity = capacity;
         self
     }
 
@@ -127,6 +167,11 @@ mod tests {
         assert_eq!(config.bind_address(), "127.0.0.1:8080");
         assert!(config.trusted_headers.is_empty());
         assert!(config.api_keys.is_empty());
+        assert!(config.basic_credentials.is_empty());
+        assert!(config.jwt_secret.is_none());
+        assert_eq!(config.rate_limit_requests_per_second, 0);
+        assert_eq!(config.response_cache_ttl, Duration::from_secs(60));
+        assert_eq!(config.response_cache_capacity, 256);
         assert_eq!(config.auth_cache_ttl, Duration::from_secs(300));
         assert_eq!(config.auth_cache_capacity, 1024);
         assert_eq!(config.config_cache_ttl, Duration::from_secs(300));
@@ -146,12 +191,21 @@ mod tests {
         let config = ServerConfig::default()
             .with_trusted_headers(vec!["X-Qgis-User".to_string()])
             .with_api_keys(vec!["key".to_string()])
+            .with_basic_credentials(vec![("alice".to_string(), "pw".to_string())])
+            .with_jwt_secret("signing-key")
+            .with_rate_limit(10)
+            .with_response_cache(Duration::from_secs(30), 12)
             .with_auth_cache_ttl(Duration::from_secs(60))
             .with_auth_cache_capacity(8)
             .with_config_cache_ttl(Duration::from_secs(120))
             .with_config_cache_capacity(16);
         assert_eq!(config.trusted_headers, vec!["X-Qgis-User".to_string()]);
         assert_eq!(config.api_keys, vec!["key".to_string()]);
+        assert_eq!(config.basic_credentials, vec![("alice".to_string(), "pw".to_string())]);
+        assert_eq!(config.jwt_secret.as_deref(), Some("signing-key"));
+        assert_eq!(config.rate_limit_requests_per_second, 10);
+        assert_eq!(config.response_cache_ttl, Duration::from_secs(30));
+        assert_eq!(config.response_cache_capacity, 12);
         assert_eq!(config.auth_cache_ttl, Duration::from_secs(60));
         assert_eq!(config.auth_cache_capacity, 8);
         assert_eq!(config.config_cache_ttl, Duration::from_secs(120));

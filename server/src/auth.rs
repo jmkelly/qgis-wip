@@ -16,6 +16,10 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
+use hmac::{Hmac, Mac};
+use sha2::{Digest, Sha256};
 
 use crate::config::ServerConfig;
 
@@ -314,11 +318,12 @@ impl ApiKeyAuth {
 
     /// Validates an API key, caching successful validations.
     pub fn validate(&self, key: &str) -> bool {
-        if self.cache.contains(key) {
+        let cache_key = credential_cache_key("api", key.as_bytes());
+        if self.cache.contains(&cache_key) {
             return true;
         }
         if self.keys.iter().any(|k| constant_time_eq(k.as_bytes(), key.as_bytes())) {
-            self.cache.insert(key);
+            self.cache.insert(cache_key);
             return true;
         }
         false
@@ -333,6 +338,166 @@ impl ApiKeyAuth {
     pub fn key_count(&self) -> usize {
         self.keys.len()
     }
+}
+
+/// Authentication policy supporting API keys, HTTP Basic, and HS256 JWTs.
+///
+/// Authentication is disabled when no credentials are configured, preserving
+/// the default development-server behavior. A successfully verified
+/// credential is cached for the configured auth-cache TTL (five minutes by
+/// default). Secrets are represented in the cache by SHA-256 fingerprints,
+/// never stored as cache keys in plaintext.
+#[derive(Debug, Clone)]
+pub struct Authenticator {
+    api_keys: Vec<String>,
+    basic_credentials: Vec<(String, String)>,
+    jwt_secret: Option<String>,
+    cache: AuthCache,
+}
+
+impl Authenticator {
+    /// Constructs the configured authenticator.
+    pub fn from_config(config: &ServerConfig) -> Self {
+        Self {
+            api_keys: config.api_keys.clone(),
+            basic_credentials: config.basic_credentials.clone(),
+            jwt_secret: config.jwt_secret.clone(),
+            cache: config.auth_cache(),
+        }
+    }
+
+    /// Returns whether at least one authentication mechanism is configured.
+    pub fn is_enabled(&self) -> bool {
+        !self.api_keys.is_empty()
+            || !self.basic_credentials.is_empty()
+            || self.jwt_secret.is_some()
+    }
+
+    /// Validates the request credentials. Bearer credentials may be either an
+    /// API key or an HS256 JWT; `x-api-key` is also accepted for API keys.
+    pub fn authenticate(
+        &self,
+        authorization: Option<&str>,
+        api_key_header: Option<&str>,
+    ) -> bool {
+        if !self.is_enabled() {
+            return true;
+        }
+
+        let bearer = authorization.and_then(parse_bearer);
+        if let Some(key) = api_key_header.or(bearer) {
+            let cache_key = credential_cache_key("api", key.as_bytes());
+            if self.cache.contains(&cache_key)
+                || self.api_keys.iter().any(|valid| constant_time_eq(valid.as_bytes(), key.as_bytes()))
+            {
+                self.cache.insert(cache_key);
+                return true;
+            }
+
+            if let Some(secret) = &self.jwt_secret {
+                let jwt_cache_key = credential_cache_key("jwt", key.as_bytes());
+                if self.cache.contains(&jwt_cache_key) && parse_jwt_claims(key).is_some()
+                    || verify_hs256_jwt(key, secret).is_some()
+                {
+                    self.cache.insert(jwt_cache_key);
+                    return true;
+                }
+            }
+        }
+
+        if let Some(header) = authorization {
+            if let Some((username, password)) = parse_basic_auth(header) {
+                let mut material = username.as_bytes().to_vec();
+                material.push(0);
+                material.extend_from_slice(password.as_bytes());
+                let cache_key = credential_cache_key("basic", &material);
+                if self.cache.contains(&cache_key)
+                    || self.basic_credentials.iter().any(|(user, pass)| {
+                        constant_time_eq(user.as_bytes(), username.as_bytes())
+                            && constant_time_eq(pass.as_bytes(), password.as_bytes())
+                    })
+                {
+                    self.cache.insert(cache_key);
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Returns the shared credential cache.
+    pub fn cache(&self) -> &AuthCache {
+        &self.cache
+    }
+}
+
+fn parse_bearer(header: &str) -> Option<&str> {
+    let (scheme, token) = header.split_once(' ')?;
+    (scheme.eq_ignore_ascii_case("bearer") && !token.trim().is_empty())
+        .then(|| token.trim())
+}
+
+fn credential_cache_key(kind: &str, credential: &[u8]) -> String {
+    let digest = Sha256::digest(credential);
+    let mut key = String::with_capacity(kind.len() + 1 + digest.len() * 2);
+    key.push_str(kind);
+    key.push(':');
+    for byte in digest {
+        use std::fmt::Write;
+        let _ = write!(key, "{byte:02x}");
+    }
+    key
+}
+
+/// Validates an HS256 JWT's signature and time claims, returning its subject
+/// when present. Only HS256 is accepted; algorithm negotiation is forbidden.
+fn verify_hs256_jwt(token: &str, secret: &str) -> Option<Option<String>> {
+    let mut parts = token.split('.');
+    let (header_part, claims_part, signature_part) =
+        (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() {
+        return None;
+    }
+
+    let header: serde_json::Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(header_part).ok()?).ok()?;
+    if header.get("alg")?.as_str()? != "HS256" {
+        return None;
+    }
+    let claims = parse_jwt_claims(token)?;
+
+    let signature = URL_SAFE_NO_PAD.decode(signature_part).ok()?;
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).ok()?;
+    mac.update(format!("{header_part}.{claims_part}").as_bytes());
+    mac.verify_slice(&signature).ok()?;
+    Some(claims.get("sub").and_then(serde_json::Value::as_str).map(str::to_owned))
+}
+
+fn parse_jwt_claims(token: &str) -> Option<serde_json::Value> {
+    let mut parts = token.split('.');
+    let (header_part, claims_part, _) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() {
+        return None;
+    }
+    let header: serde_json::Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(header_part).ok()?).ok()?;
+    if header.get("alg")?.as_str()? != "HS256" {
+        return None;
+    }
+    let claims: serde_json::Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(claims_part).ok()?).ok()?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    if let Some(exp) = claims.get("exp") {
+        if exp.as_u64()?.le(&now) {
+            return None;
+        }
+    }
+    if let Some(nbf) = claims.get("nbf") {
+        if nbf.as_u64()? > now {
+            return None;
+        }
+    }
+    Some(claims)
 }
 
 /// Compares two byte strings in constant time.
@@ -393,9 +558,19 @@ fn base64_decode(input: &str) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
     fn cache() -> AuthCache {
         AuthCache::new(Duration::from_secs(300), 16)
+    }
+
+    fn jwt(secret: &str, claims: &str) -> String {
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256","typ":"JWT"}"#);
+        let claims = URL_SAFE_NO_PAD.encode(claims);
+        let message = format!("{header}.{claims}");
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(message.as_bytes());
+        format!("{message}.{}", URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes()))
     }
 
     #[test]
@@ -551,6 +726,45 @@ mod tests {
         assert!(parse_basic_auth("Bearer token").is_none());
         assert!(parse_basic_auth("Basic not-base64!").is_none());
         assert!(parse_basic_auth("").is_none());
+    }
+
+    #[test]
+    fn authenticator_supports_api_key_basic_and_jwt() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let config = ServerConfig::default()
+            .with_api_keys(vec!["api-secret".to_string()])
+            .with_basic_credentials(vec![("alice".to_string(), "password".to_string())])
+            .with_jwt_secret("jwt-secret");
+        let auth = Authenticator::from_config(&config);
+        assert!(!auth.authenticate(None, None));
+        assert!(auth.authenticate(Some("Bearer api-secret"), None));
+        assert!(auth.authenticate(Some("Basic YWxpY2U6cGFzc3dvcmQ="), None));
+
+        let token = jwt("jwt-secret", &format!(r#"{{"sub":"alice","exp":{}}}"#, now + 60));
+        assert!(auth.authenticate(Some(&format!("Bearer {token}")), None));
+        assert!(auth.cache().len() >= 3);
+        assert!(!auth.authenticate(Some("Bearer invalid"), None));
+    }
+
+    #[test]
+    fn jwt_verification_rejects_expired_and_wrong_signature() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        assert!(verify_hs256_jwt(
+            &jwt("secret", &format!(r#"{{"exp":{}}}"#, now - 1)),
+            "secret"
+        )
+        .is_none());
+        assert!(verify_hs256_jwt(
+            &jwt("wrong", &format!(r#"{{"exp":{}}}"#, now + 60)),
+            "secret"
+        )
+        .is_none());
     }
 
     #[test]
