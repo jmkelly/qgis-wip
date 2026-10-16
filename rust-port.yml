@@ -72,7 +72,16 @@ jobs:
       - name: Install cargo-geiger
         run: cargo install cargo-geiger --locked
       - name: Run cargo-geiger
-        run: cargo geiger --workspace
+        run: |
+          # cargo-geiger 0.14.0 rejects the virtual workspace manifest
+          # ("manifest path ... is a virtual manifest"), so --workspace can
+          # never succeed at the repo root; audit every package individually
+          # instead (bead qgis-nw5). Findings are advisory: this job is
+          # continue-on-error and uses the same || true convention as
+          # ci.sh's informational geiger gate.
+          for manifest in $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[].manifest_path'); do
+            cargo geiger --manifest-path "$manifest" || true
+          done
 
   headless:
     name: headless acceptance

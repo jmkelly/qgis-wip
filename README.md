@@ -42,7 +42,11 @@ see ADR-0006.
 ```bash
 cargo test --workspace
 cargo clippy --workspace -- -D warnings
-cargo geiger --workspace  # verify no FFI
+# verify no FFI — cargo geiger rejects the virtual workspace manifest,
+# so audit every package instead (bead qgis-nw5)
+for m in $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[].manifest_path'); do
+  cargo geiger --manifest-path "$m" || true
+done
 ```
 
 ## CI
