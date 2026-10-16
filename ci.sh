@@ -190,11 +190,17 @@ echo ""
 
 # --- Gate 5: cargo-geiger (optional) ---
 if [ "$GEIGER" -eq 1 ]; then
-    echo "--- [5/6] cargo geiger --workspace (informational) ---"
+    echo "--- [5/6] cargo geiger (informational) ---"
     if ! command -v cargo-geiger &>/dev/null; then
         echo "cargo-geiger not installed; skipping (run: cargo install cargo-geiger)"
     else
-        cargo geiger --workspace || true
+        # cargo-geiger 0.14.0 rejects the virtual workspace manifest at the
+        # repo root ("manifest path ... is a virtual manifest"), so --workspace
+        # can never succeed here; audit every package individually instead
+        # (bead qgis-6qa). Findings are advisory: keep the || true.
+        for manifest in $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[].manifest_path'); do
+            cargo geiger --manifest-path "$manifest" || true
+        done
     fi
 else
     echo "--- [5/6] cargo-geiger skipped (pass --geiger to enable) ---"

@@ -458,7 +458,14 @@ cmd_all() {
     if [ "$geiger" -eq 1 ]; then
         echo "--- cargo-geiger (informational) ---"
         if command -v cargo-geiger &>/dev/null; then
-            cargo geiger --workspace || true
+            # cargo-geiger 0.14.0 rejects the virtual workspace manifest at
+            # the repo root ("manifest path ... is a virtual manifest"), so
+            # --workspace can never succeed here; audit every package
+            # individually instead (bead qgis-6qa). Findings are advisory:
+            # keep the || true.
+            for manifest in $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[].manifest_path'); do
+                cargo geiger --manifest-path "$manifest" || true
+            done
         else
             echo "cargo-geiger not installed; skipping"
         fi
