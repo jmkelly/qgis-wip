@@ -407,4 +407,140 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
     }
+
+    fn get(uri: &str) -> axum::http::Request<Body> {
+        axum::http::Request::builder()
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    fn cache_status(response: &Response) -> Option<String> {
+        response
+            .headers()
+            .get("X-QGIS-Cache")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned)
+    }
+
+    const CAPABILITIES: &str =
+        "/wms?SERVICE=WMS&REQUEST=GetCapabilities&MAP=/tmp/test.qgs";
+
+    #[tokio::test]
+    async fn middleware_rejects_unauthenticated_request_when_api_keys_configured() {
+        let config = ServerConfig::default().with_api_keys(vec!["secret".to_string()]);
+        let app = build_router(AppState::new(config));
+
+        let response = app.oneshot(get(CAPABILITIES)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            response
+                .headers()
+                .get("WWW-Authenticate")
+                .and_then(|value| value.to_str().ok()),
+            Some("Basic realm=\"QGIS Server\"")
+        );
+    }
+
+    #[tokio::test]
+    async fn middleware_accepts_api_key_and_basic_credentials() {
+        let config = ServerConfig::default()
+            .with_api_keys(vec!["secret".to_string()])
+            .with_basic_credentials(vec![("alice".to_string(), "password".to_string())]);
+        let app = build_router(AppState::new(config));
+
+        let api_key_response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(CAPABILITIES)
+                    .header("Authorization", "Bearer secret")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(api_key_response.status(), StatusCode::OK);
+
+        let basic_response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(CAPABILITIES)
+                    .header("Authorization", "Basic YWxpY2U6cGFzc3dvcmQ=")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(basic_response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn middleware_rejects_wrong_credentials() {
+        let config = ServerConfig::default().with_api_keys(vec!["secret".to_string()]);
+        let app = build_router(AppState::new(config));
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(CAPABILITIES)
+                    .header("Authorization", "Bearer wrong")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn middleware_rate_limits_repeated_requests() {
+        let config = ServerConfig::default().with_rate_limit(1);
+        let app = build_router(AppState::new(config));
+
+        let first = app.clone().oneshot(get("/")).await.unwrap();
+        assert_eq!(first.status(), StatusCode::OK);
+
+        let second = app.oneshot(get("/")).await.unwrap();
+        assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            second
+                .headers()
+                .get("Retry-After")
+                .and_then(|value| value.to_str().ok()),
+            Some("1")
+        );
+    }
+
+    #[tokio::test]
+    async fn response_cache_hits_on_repeated_getcapabilities() {
+        let app = build_router(AppState::new(ServerConfig::default()));
+
+        let first = app.clone().oneshot(get(CAPABILITIES)).await.unwrap();
+        assert_eq!(first.status(), StatusCode::OK);
+        assert_eq!(cache_status(&first).as_deref(), Some("MISS"));
+
+        let second = app.oneshot(get(CAPABILITIES)).await.unwrap();
+        assert_eq!(second.status(), StatusCode::OK);
+        assert_eq!(cache_status(&second).as_deref(), Some("HIT"));
+    }
+
+    #[tokio::test]
+    async fn response_cache_does_not_hit_for_distinct_uris() {
+        let app = build_router(AppState::new(ServerConfig::default()));
+
+        let first = app
+            .clone()
+            .oneshot(get(CAPABILITIES))
+            .await
+            .unwrap();
+        assert_eq!(cache_status(&first).as_deref(), Some("MISS"));
+
+        let other = app
+            .oneshot(get("/wms?SERVICE=WMS&REQUEST=GetCapabilities&MAP=/tmp/other.qgs"))
+            .await
+            .unwrap();
+        assert_eq!(other.status(), StatusCode::OK);
+        assert_eq!(cache_status(&other).as_deref(), Some("MISS"));
+    }
 }
